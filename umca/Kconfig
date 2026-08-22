@@ -1,0 +1,38 @@
+config UMCA
+	bool "Unified Modular Communication Architecture"
+	default n
+	---help---
+		Enable the platform-independent UMCA core and its optional adapters.
+
+if UMCA
+
+choice UMCA_PROFILE
+	prompt "UMCA profile"
+	default UMCA_PROFILE_DISCOVERY
+
+config UMCA_PROFILE_MINIMAL
+	bool "Minimal"
+
+config UMCA_PROFILE_DISCOVERY
+	bool "Discovery"
+
+config UMCA_PROFILE_CONTEST
+	bool "Contest"
+
+endchoice
+
+config UMCA_BUILD_LOOPBACK
+	bool "Loopback PHY"
+	default y
+
+config UMCA_MAX_PAYLOAD
+	int "Maximum payload"
+	default 256
+	range 1 256
+
+config UMCA_MAX_TOPICS
+	int "Local topic capacity"
+	default 16
+	range 1 255
+
+endif

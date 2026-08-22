@@ -1,5 +1,26 @@
 # contest2026_417_duwen
 
+## UMCA implementation status
+
+This repository now contains the independent UMCA MVP implementation under
+[`umca/`](umca/). It follows the frozen protocol and software design documents
+in [`docs/`](docs/): fixed-frame codec, CRC32C, Topic IDs, static multi-instance
+Core, Discovery, POSIX PAL, Loopback PHY, and a host three-node test.
+
+Run the host validation without an openvela checkout:
+
+```sh
+cmake -S umca -B /tmp/umca-build -DUMCA_PROFILE=DISCOVERY -DBUILD_TESTING=ON
+cmake --build /tmp/umca-build -j2
+ctest --test-dir /tmp/umca-build --output-on-failure
+```
+
+`UMCA_PROFILE=MINIMAL` verifies source-level removal of Discovery and RX
+sequence tracking. The openvela PAL and package integration are kept separate
+from the Core. The application adapter uses the actual ai_agent external tool
+provider API, but still requires the application to supply a running Context
+and PHY service before registering the provider at runtime.
+
 👋 欢迎参加 **2026 首届 openvela AI 硬件开发者大赛**！
 
 这是组委会为你的队伍创建的**专属参赛仓库**（本仓为样例/模板，队伍编号 `417`；你看到的将是你自己的 `contest2026_<编号>_<队伍名>`）。比赛期间，你的全部参赛代码、打包产物与 AI Coding 日志都提交到这里。
