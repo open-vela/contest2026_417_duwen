@@ -2,12 +2,14 @@
 #  define _DEFAULT_SOURCE 1
 #endif
 
-#include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/types.h>
 #include <unistd.h>
+
+#include <nuttx/sched.h>
 
 #include "demo/demo_topics.h"
 #include "adapter/umca_agent_adapter.h"
@@ -35,7 +37,7 @@ typedef struct
 typedef struct
 {
   bool running;
-  pthread_t thread;
+  pid_t task;
   umca_loopback_bus_t bus;
   umca_loopback_endpoint_t endpoints[3];
   umca_phy_t phys[3];
@@ -103,10 +105,10 @@ static void on_fan_command(umca_context_t *ctx, const umca_message_t *message,
   state.applied_time_ms = service_now();
   if (demo_encode_fan_state(&state, payload) == 0)
     {
-      (void)umca_publish(&service->contexts[2], DEMO_TOPIC_FAN_STATE,
-                         UMCA_AGENT_DEVID, payload, sizeof(payload));
-      printf("[umca] actuator applied request=%lu state=%u\n",
-             (unsigned long)state.request_id, state.state);
+      int ret = umca_publish(&service->contexts[2], DEMO_TOPIC_FAN_STATE,
+                             UMCA_AGENT_DEVID, payload, sizeof(payload));
+      printf("[umca] actuator applied request=%lu state=%u publish=%d\n",
+             (unsigned long)state.request_id, state.state, ret);
     }
 }
 
@@ -199,6 +201,12 @@ static int service_init(umca_service_t *service)
                                 UMCA_TOPIC_SUBSCRIBER, on_fan_command, service,
                                 NULL);
     }
+  if (ret == UMCA_OK)
+    {
+      ret = umca_topic_register(&service->contexts[2],
+                                "/actuators/fan/state",
+                                UMCA_TOPIC_PUBLISHER, NULL, NULL, NULL);
+    }
   if (ret != UMCA_OK)
     {
       return ret;
@@ -226,9 +234,12 @@ static int service_init(umca_service_t *service)
   return UMCA_OK;
 }
 
-static void *service_thread(void *arg)
+static int service_task(int argc, char *argv[])
 {
-  umca_service_t *service = arg;
+  umca_service_t *service = &g_service;
+  (void)argc;
+  (void)argv;
+  printf("[umca] service thread started\n");
   while (service->running)
     {
       uint32_t now = service_now();
@@ -248,7 +259,8 @@ static void *service_thread(void *arg)
         }
       usleep(100000);
     }
-  return NULL;
+  printf("[umca] service thread stopped\n");
+  return 0;
 }
 
 int umca_service_start(void)
@@ -265,12 +277,13 @@ int umca_service_start(void)
       return ret;
     }
   g_service.running = true;
-  if (pthread_create(&g_service.thread, NULL, service_thread, &g_service) != 0)
+  g_service.task = task_create("umca_svc", 100, 16384, service_task, NULL);
+  if (g_service.task < 0)
     {
       g_service.running = false;
+      printf("[umca] task_create failed: %d\n", (int)g_service.task);
       return -1;
     }
-  pthread_detach(g_service.thread);
   printf("[umca] Goldfish three-node service started\n");
   return 0;
 }
