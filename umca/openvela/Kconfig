@@ -25,4 +25,11 @@ config UMCA_BUILD_LOOPBACK
 	bool "Loopback PHY"
 	default y
 
+config LVX_USE_DEMO_CONTEST2026_417_UMCA_AGENT
+	bool "UMCA openvela demo agent"
+	depends on !UMCA_PROFILE_MINIMAL
+	default n
+	---help---
+		Enable the Goldfish three-node UMCA service application.
+
 endif

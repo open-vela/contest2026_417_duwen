@@ -3,7 +3,11 @@
 if(CONFIG_UMCA)
   nuttx_add_library(umca_core)
 
-  set(UMCA_SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
+  # The manifest exposes this package through a symlink under apps/.  Resolve
+  # it before walking to the platform-independent UMCA sources; otherwise
+  # CMake would incorrectly look below apps/packages/demos/.
+  get_filename_component(UMCA_PACKAGE_DIR ${CMAKE_CURRENT_LIST_DIR} REALPATH)
+  set(UMCA_SRC_DIR ${UMCA_PACKAGE_DIR}/..)
   set(UMCA_OPENVELA_SOURCES
     ${UMCA_SRC_DIR}/src/base/umca_byteorder.c
     ${UMCA_SRC_DIR}/src/base/umca_crc32c.c

@@ -8,6 +8,8 @@
 
 typedef struct
 {
+  void (*pump)(void *user);
+  void *pump_user;
   umca_context_t *ctx;
   umca_devid_t sensor_dev_id;
   umca_devid_t actuator_dev_id;
@@ -27,11 +29,15 @@ typedef struct
   uint8_t pending_state;
 } umca_agent_adapter_t;
 
+typedef void (*umca_agent_pump_t)(void *user);
+
 int umca_agent_adapter_init(umca_agent_adapter_t *adapter,
                             umca_context_t *ctx,
                             umca_devid_t sensor_dev_id,
                             umca_devid_t actuator_dev_id);
 void umca_agent_adapter_tick(umca_agent_adapter_t *adapter);
+void umca_agent_adapter_set_pump(umca_agent_adapter_t *adapter,
+                                 umca_agent_pump_t pump, void *user);
 int umca_agent_adapter_sensor_query(umca_agent_adapter_t *adapter,
                                     char *output, uint32_t output_size);
 int umca_agent_adapter_device_control(umca_agent_adapter_t *adapter,
