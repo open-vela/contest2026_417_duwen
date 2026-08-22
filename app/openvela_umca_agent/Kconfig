@@ -1,0 +1,8 @@
+config LVX_USE_DEMO_CONTEST2026_417_UMCA_AGENT
+	bool "UMCA openvela demo agent"
+	depends on UMCA
+	depends on !UMCA_PROFILE_MINIMAL
+	default n
+	---help---
+		Enable the UMCA demo application. The application is a thin host/runtime
+		integration shell; UMCA protocol logic remains in the independent library.

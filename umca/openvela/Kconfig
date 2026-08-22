@@ -1,0 +1,28 @@
+config UMCA
+	bool "Unified Modular Communication Architecture"
+	default n
+	---help---
+		Enable the platform-independent UMCA core.
+
+if UMCA
+
+choice UMCA_PROFILE
+	prompt "UMCA profile"
+	default UMCA_PROFILE_DISCOVERY
+
+config UMCA_PROFILE_MINIMAL
+	bool "Minimal"
+
+config UMCA_PROFILE_DISCOVERY
+	bool "Discovery"
+
+config UMCA_PROFILE_CONTEST
+	bool "Contest"
+
+endchoice
+
+config UMCA_BUILD_LOOPBACK
+	bool "Loopback PHY"
+	default y
+
+endif
