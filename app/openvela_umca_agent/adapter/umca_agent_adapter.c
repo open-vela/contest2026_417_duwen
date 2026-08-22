@@ -15,8 +15,10 @@ extern void tool_registry_register_provider(const char *name,
                                             tool_provider_fn get_tools,
                                             tool_executor_fn execute)
   __attribute__((weak));
+extern void tool_registry_invalidate(void) __attribute__((weak));
 
 static umca_agent_adapter_t *g_adapter;
+static bool g_provider_registered;
 
 static uint32_t adapter_now(umca_agent_adapter_t *adapter)
 {
@@ -169,9 +171,14 @@ int umca_agent_adapter_init(umca_agent_adapter_t *adapter,
     }
   adapter->initialized = true;
   g_adapter = adapter;
-  if (tool_registry_register_provider != NULL)
+  if (!g_provider_registered && tool_registry_register_provider != NULL)
     {
       tool_registry_register_provider("umca", adapter_tools, tool_execute);
+      g_provider_registered = true;
+      if (tool_registry_invalidate != NULL)
+        {
+          tool_registry_invalidate();
+        }
     }
   return UMCA_OK;
 }
