@@ -7,6 +7,15 @@
 #include "demo/demo_topics.h"
 #include "umca_agent_adapter.h"
 
+/* The UMCA service can run without the optional ai_agent application.  When
+ * ai_agent is linked into the same NuttX image this symbol is provided by its
+ * tool registry; otherwise the weak reference keeps the three-node service
+ * self-contained and the provider is simply not registered. */
+extern void tool_registry_register_provider(const char *name,
+                                            tool_provider_fn get_tools,
+                                            tool_executor_fn execute)
+  __attribute__((weak));
+
 static umca_agent_adapter_t *g_adapter;
 
 static uint32_t adapter_now(umca_agent_adapter_t *adapter)
@@ -160,7 +169,10 @@ int umca_agent_adapter_init(umca_agent_adapter_t *adapter,
     }
   adapter->initialized = true;
   g_adapter = adapter;
-  tool_registry_register_provider("umca", adapter_tools, tool_execute);
+  if (tool_registry_register_provider != NULL)
+    {
+      tool_registry_register_provider("umca", adapter_tools, tool_execute);
+    }
   return UMCA_OK;
 }
 
@@ -170,6 +182,16 @@ void umca_agent_adapter_tick(umca_agent_adapter_t *adapter)
   if (adapter != NULL && adapter->initialized)
     {
       (void)umca_poll(adapter->ctx, &processed);
+    }
+}
+
+void umca_agent_adapter_set_pump(umca_agent_adapter_t *adapter,
+                                 umca_agent_pump_t pump, void *user)
+{
+  if (adapter != NULL)
+    {
+      adapter->pump = pump;
+      adapter->pump_user = user;
     }
 }
 
@@ -252,7 +274,14 @@ int umca_agent_adapter_device_control(umca_agent_adapter_t *adapter,
   while (!adapter->request_completed &&
          (uint32_t)(deadline - adapter_now(adapter)) < UINT32_C(0x80000000))
     {
-      umca_agent_adapter_tick(adapter);
+      if (adapter->pump != NULL)
+        {
+          adapter->pump(adapter->pump_user);
+        }
+      else
+        {
+          umca_agent_adapter_tick(adapter);
+        }
     }
   ret = adapter->request_completed && adapter->pending_result == 0 ?
         UMCA_OK : UMCA_ERR_TIMEOUT;

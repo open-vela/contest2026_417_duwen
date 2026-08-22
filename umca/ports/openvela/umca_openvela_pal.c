@@ -2,6 +2,7 @@
 
 #include <nuttx/irq.h>
 #include <nuttx/mutex.h>
+#include <nuttx/spinlock.h>
 
 #include "umca_openvela_pal.h"
 
