@@ -25,6 +25,13 @@ config UMCA_BUILD_LOOPBACK
 	bool "Loopback PHY"
 	default y
 
+config UMCA_BUILD_UART
+	bool "UART PHY"
+	default n
+	---help---
+		Build the static UART byte-stream PHY adapter. The application supplies
+		the platform UART read/write callbacks.
+
 config LVX_USE_DEMO_CONTEST2026_417_UMCA_AGENT
 	bool "UMCA openvela demo agent"
 	depends on !UMCA_PROFILE_MINIMAL

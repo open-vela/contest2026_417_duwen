@@ -16,6 +16,12 @@ DISCOVERY 主机测试在 AddressSanitizer/UndefinedBehaviorSanitizer（关闭 L
 的 ptrace 检测）下通过。Goldfish 运行时可使用 `umca_agent tools`、
 `umca_agent sensor_query` 和 `umca_agent device_control on|off` 复核 provider 接入。
 
-尚未实现的协议能力保持关闭：分段、RPC、ACK/ERROR、QoS-1/2/3、网关、
-多路径、安全、UART/GD32/ESP32 硬件互操作和动态内存。Goldfish Loopback 资源数据
-不得外推为 GD32 资源结论。
+硬件阶段（2026-09-06）：目标板确认是 GD32F470V-START，MCU 为 GD32F470VKT6。
+UART 静态字节流 PHY、openvela 文件描述符桥接和通用 `umca_gd32` NSH 应用已实现，
+主机 4/4 测试通过。包含 UMCA 的 GD32 固件已在 Linux 端成功链接：Flash 243,760 B，
+SRAM region 15,232 B；相对最小 NSH 基线分别增加 13,756 B 和 8,532 B。实板烧录、
+USART 引脚/对端确认、UART 帧互操作和 GD32↔ESP32 透传仍待完成。
+Linux 负责编译，Windows 负责 GD-Link/CMSIS-DAP 烧录和 GDB 调试；`.vscode/` 未修改。
+
+尚未实现的协议能力保持关闭：分段、RPC、ACK/ERROR、QoS-1/2/3、网关、多路径、
+安全和动态内存。Goldfish Loopback 资源数据不得外推为 GD32 资源结论。

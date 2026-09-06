@@ -14,5 +14,6 @@
     <linkfile src="board/contest_board" dest="vendor/openvela/boards/contest2026_417_board"/>
     <linkfile src="umca/openvela" dest="packages/demos/contest2026_417_umca"/>
     <linkfile src="app/openvela_umca_agent" dest="packages/demos/contest2026_417_umca_agent"/>
+    <linkfile src="app/openvela_umca_gd32" dest="packages/demos/contest2026_417_umca_gd32"/>
   </project>
 </manifest>

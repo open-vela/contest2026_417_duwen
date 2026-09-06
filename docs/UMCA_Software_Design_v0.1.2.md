@@ -12,7 +12,7 @@
 | 开发计划 | `UMCA_Development_Plan_v0.1.2.md` |
 | 目标语言 | C11子集，兼容常见嵌入式C编译器 |
 | 首发验证环境 | Linux主机单元测试、openvela Goldfish ARM64 |
-| 目标硬件 | GD32F470V-START |
+| 目标硬件 | GD32F470V-START（MCU：GD32F470VKT6） |
 | 状态 | 正式开发软件设计冻结候选基线 |
 
 ### v0.1.2修订摘要
@@ -1286,7 +1286,36 @@ while running:
 
 硬件阶段通常只有一个GD32 Context，仍可复用相同Service入口。
 
-### 18.3 NSH命令
+### 18.3 GD32F470VKT6 编译、烧录和调试边界
+
+GD32F470V-START 的 MCU 型号为 GD32F470VKT6。Linux 端使用 NuttX 官方
+`configure.sh + make` 路径交叉编译；Windows 端只负责连接板载 GD-Link/CMSIS-DAP
+进行烧录、复位、串口观察和 GDB 调试。当前 openvela CMake 流程在 GD32F4 架构目录
+缺少 `CMakeLists.txt`，因此不得把 `build.sh --cmake` 失败误判为 UMCA 编译错误。
+
+推荐的 Linux 构建命令：
+
+```bash
+cd /path/to/openvela/nuttx
+export PATH=/path/to/openvela/prebuilts/tools/python/bin:\
+/path/to/openvela/prebuilts/build-tools/linux-x86_64/bin:\
+/path/to/openvela/prebuilts/tools/linux/x86_64:\
+/path/to/openvela/prebuilts/gcc/linux-x86_64/arm-none-eabi/bin:$PATH
+export PYTHONPATH=/path/to/openvela/prebuilts/tools/python/dist-packages/kconfiglib
+./tools/configure.sh -E -l \
+  ../vendor/gigadevice/boards/gd32f4/gd32f470v_start/configs/nsh
+make -j$(nproc)
+```
+
+板级 `nsh` 默认控制台为 USART0，PA9 为 TX、PA10 为 RX、115200 8N1。UMCA UART
+PHY 使用独立字节流适配器，组帧规则为搜索 UMCA `0x55 0x4D`、读取固定 36 字节帧头、
+按 Payload 长度收齐完整帧，再交给 Core 校验 CRC；适配器不在 ISR 中调用 Core。
+串口设备路径、UMCA 角色和 UART 对端尚未在软件中硬编码，必须根据实际接线确认，
+避免 NSH 控制台与 UMCA 数据链路复用。
+
+本阶段不修改 `.vscode/`，也不依赖任何 IDE 任务或用户目录配置。
+
+### 18.4 NSH命令
 
 应用层提供：
 
@@ -1991,6 +2020,13 @@ Linux Agent实现时应始终遵守：
 1. 先测试向量，后写Codec。
 2. 先主机Core，后openvela集成。
 3. 先同步轮询，后平台任务封装。
+4. 先固定数组，后考虑复杂容器。
+5. 先实现MVP，未实现功能保持构建失败或完全缺席。
+6. 先量化资源，再讨论优化。
+7. 任何平台适配都不能反向污染Core。
+8. 任何线级歧义都必须先修订协议文档。
+
+该实现应以“关闭功能后代码和RAM真正消失”为可裁剪标准，以“第二个平台无需修改Core”为跨平台标准，以“非法输入永远不能到达业务回调”为协议健壮性标准。
 
 ## 31. 实现同步记录（2026-08-22）
 
@@ -2008,13 +2044,23 @@ Linux Agent实现时应始终遵守：
 `threshold event`、`actuator applied ... publish=0` 和 `agent control result={"ok":true...}`；
 ai_agent Tool 实际返回 `sensor_query` 温度缓存及 `device_control` 的 `request_id/state`。
 QuickApp 缺失 LFS 库和宿主 `libpulse.so.0` 是环境准备问题，不是 UMCA 运行时失败。
-4. 先固定数组，后考虑复杂容器。
-5. 先实现MVP，未实现功能保持构建失败或完全缺席。
-6. 先量化资源，再讨论优化。
-7. 任何平台适配都不能反向污染Core。
-8. 任何线级歧义都必须先修订协议文档。
 
-该实现应以“关闭功能后代码和RAM真正消失”为可裁剪标准，以“第二个平台无需修改Core”为跨平台标准，以“非法输入永远不能到达业务回调”为协议健壮性标准。
+## 32. GD32 硬件阶段同步（2026-09-06）
+
+已确认目标 MCU 为 GD32F470VKT6；新增 `umca/phy/uart/` 静态字节流适配器及
+`umca/ports/openvela/umca_openvela_uart.*` NuttX 文件描述符桥接。主机测试覆盖：
+
+- 任意分片边界下的完整帧重组；
+- 连续两帧粘包后逐帧交付；
+- 发送端短写循环；
+- 无数据轮询不阻塞。
+
+该适配器已经完成主机验证，但尚未连接 GD32 实板；实板验证仍需串口对端、实际
+设备节点/引脚和 Windows 端烧录调试记录。
+
+Linux 当前配置的资源结果为：最小 NSH 基线 Flash 230,004 B、SRAM 6,700 B；启用
+`umca_gd32` 后 Flash 243,760 B、SRAM 15,232 B，增量分别为 13,756 B 和 8,532 B。
+ELF 已包含应用入口、UART PHY、openvela UART 桥接和 Discovery ANNOUNCE 符号。
 
 ---
 

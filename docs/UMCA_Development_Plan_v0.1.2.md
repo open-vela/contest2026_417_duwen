@@ -11,7 +11,7 @@
 | 协议基线 | `UMCA_Protocol_Specification_v0.1.2.md` |
 | 目标项目 | openvela-UMC-Agent |
 | 首发平台 | openvela Goldfish ARM64 模拟器 |
-| 目标硬件 | GD32F470V-START |
+| 目标硬件 | GD32F470V-START（MCU：GD32F470VKT6） |
 | 文档状态 | 正式开发指导冻结候选基线 |
 
 ### v0.1.2修订摘要
@@ -674,6 +674,46 @@ ai_agent 的实际接入位于 `app/openvela_umca_agent`：适配层使用弱引
 
 ### 9.6 阶段5：GD32移植准备与资源门禁
 
+#### 2026-09-06 硬件阶段同步
+
+开发板已就绪，确认硬件型号为 GD32F470V-START，MCU 为 GD32F470VKT6。开发分工为：
+
+- Linux：使用 openvela 交叉工具链生成 ELF、BIN、HEX 和 MAP；
+- Windows：连接板载 GD-Link/CMSIS-DAP，执行烧录、复位、串口观察和 GDB 调试；
+- `.vscode/`：本阶段不修改，也不把 IDE 配置作为构建依赖。
+
+当前先完成可审查的交叉编译和 UART PHY 主机验证，再进行实板烧录。板级上游配置
+已确认 USART0 默认使用 PA9/PA10、115200 8N1；若将该串口同时用于 UMCA 数据链路，
+必须先确认不会与 NSH 控制台复用。USART3/Virtual COM Port 或其他排针串口的实际
+接线、对端设备和电平标准需在硬件联调前明确，不能由软件侧推断。
+
+Linux 端的官方板级 Make 流程为：
+
+```bash
+cd /path/to/openvela/nuttx
+export PATH=/path/to/openvela/prebuilts/tools/python/bin:\
+/path/to/openvela/prebuilts/build-tools/linux-x86_64/bin:\
+/path/to/openvela/prebuilts/tools/linux/x86_64:\
+/path/to/openvela/prebuilts/gcc/linux-x86_64/arm-none-eabi/bin:$PATH
+export PYTHONPATH=/path/to/openvela/prebuilts/tools/python/dist-packages/kconfiglib
+./tools/configure.sh -E -l \
+  ../vendor/gigadevice/boards/gd32f4/gd32f470v_start/configs/nsh
+make -j$(nproc)
+```
+
+当前环境中 `./build.sh ... --cmake` 可识别该板，但会因 `arch/arm/src/gd32f4`
+缺少 CMake 构建入口而失败；这不是 UMCA 代码错误，因此 GD32 阶段固定采用上面的
+Make/configure 路径，除非上游补齐该架构的 CMake 支持。
+
+Linux 实测的最小 NSH 基线为 Flash 230,004 B、SRAM 6,700 B；启用通用
+`umca_gd32` 应用后为 Flash 243,760 B、SRAM 15,232 B，增量为 Flash 13,756 B、
+SRAM 8,532 B。该数据只用于当前配置的资源门禁，不替代后续实板栈峰值测量。
+
+Windows 端建议使用板载 GD-Link 的 CMSIS-DAP 接口，通过 OpenOCD 或 SEGGER/J-Link
+兼容工具完成烧录和 GDB 连接。烧录地址、复位方式和目标脚本必须以实际 Windows
+工具链识别结果为准；Linux 端只负责生成固件，不在仓库内提交 Windows 用户目录、
+驱动安装结果或 `.vscode/` 配置。
+
 #### 无硬件阶段可完成
 
 1. 确认GD32 openvela板级配置和工具链。
@@ -702,7 +742,8 @@ ai_agent 的实际接入位于 `app/openvela_umca_agent`：适配层使用弱引
 - UMCA自身资源满足预算或有明确裁剪方案。
 - 固件总体不超过目标Code Flash和SRAM区域。
 - 没有将Goldfish预编译库带入GD32目标。
-- 未验证UART的状态明确标记为“接口完成、硬件未验证”。
+- UART PHY 字节流适配器已完成主机分片、粘包和短写测试；在实板上完成串口收发前，
+  状态仍标记为“接口完成、硬件未验证”。
 
 ### 9.7 阶段6：硬件到位后的GD32与ESP32验证
 
@@ -715,6 +756,10 @@ ai_agent 的实际接入位于 `app/openvela_umca_agent`：适配层使用弱引
 5. 验证断线、重连、粘包、拆包和缓存溢出。
 6. 进行连续运行和故障注入测试。
 7. 测量真实ROM、RAM、栈峰值、吞吐量和延迟。
+
+本阶段的第一条实板路径是“GD32 启动与串口可观测性”，然后才是 GD32↔ESP32 的
+UMCA 帧互操作。烧录成功、NSH 可见和 UART 回显成功只能证明板级启动/串口链路，
+不能直接证明 UMCA 帧已通过 CRC、Sequence 和 Topic 路由验证。
 
 #### ESP32边界
 

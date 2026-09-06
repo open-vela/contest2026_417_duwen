@@ -10,7 +10,7 @@
 | 架构基线 | `UMCA_Architecture_Design_v0.3.3.md` |
 | 目标 | openvela AI 硬件比赛 MVP |
 | 首期平台 | Goldfish ARM64 模拟器、POSIX/Linux 单元测试 |
-| 后续目标平台 | GD32F470V-START |
+| 后续目标平台 | GD32F470V-START（MCU：GD32F470VKT6） |
 | 状态 | 正式开发前协议冻结候选基线 |
 
 ### v0.1.2修订摘要
@@ -753,7 +753,12 @@ typedef struct {
 - **[MVP]** 使用固定深度队列。
 - **[MVP]** 支持测试注入 CRC 错误、丢帧和重复帧。
 
-**[未实现]** UART 硬件验证。
+**[未实现]** UART 实板硬件验证。
+
+2026-09-06 起，UART PHY 的协议无关字节流组帧适配器已完成主机测试；“UART 硬件
+验证”仍特指 GD32F470VKT6 实板上的真实串口电平、线缆、对端和连续运行验证，不能以
+主机测试或 Goldfish Loopback 结果替代。Linux/Windows 工具链分工不属于线级协议：
+Linux 生成固件，Windows 执行烧录和调试。
 
 **[未实现]** CAN FD PHY。
 

@@ -7,6 +7,13 @@ This repository now contains the independent UMCA MVP implementation under
 in [`docs/`](docs/): fixed-frame codec, CRC32C, Topic IDs, static multi-instance
 Core, Discovery, POSIX PAL, Loopback PHY, and a host three-node test.
 
+The GD32 hardware target is GD32F470V-START with a GD32F470VKT6 MCU. The
+repository now also contains a static UART PHY, an openvela UART bridge and the
+`umca_gd32` NSH application. Linux build and Windows flashing/debugging steps
+are documented in
+[`docs/GD32F470VKT6_Hardware_Bringup.md`](docs/GD32F470VKT6_Hardware_Bringup.md).
+The hardware flow does not modify or depend on `.vscode/`.
+
 Run the host validation without an openvela checkout:
 
 ```sh
