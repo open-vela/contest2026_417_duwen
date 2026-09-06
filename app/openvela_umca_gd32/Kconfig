@@ -1,0 +1,25 @@
+config LVX_USE_DEMO_CONTEST2026_417_UMCA_GD32
+	bool "UMCA GD32 UART node"
+	default n
+	depends on UMCA_PROFILE_DISCOVERY
+	select UMCA_BUILD_UART
+	---help---
+		Build a single-context UMCA discovery node for GD32 hardware. The UART
+		device and node identifiers are supplied at runtime; no USART pin or
+		application role is hard-coded.
+
+if LVX_USE_DEMO_CONTEST2026_417_UMCA_GD32
+
+config LVX_USE_DEMO_CONTEST2026_417_UMCA_GD32_PROGNAME
+	string "Program name"
+	default "umca_gd32"
+
+config LVX_USE_DEMO_CONTEST2026_417_UMCA_GD32_PRIORITY
+	int "Task priority"
+	default 100
+
+config LVX_USE_DEMO_CONTEST2026_417_UMCA_GD32_STACKSIZE
+	int "Task stack size"
+	default 6144
+
+endif

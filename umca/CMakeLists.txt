@@ -47,6 +47,13 @@ target_compile_definitions(umca_phy_loopback PUBLIC ${UMCA_PROFILE_DEFINE})
 target_compile_options(umca_phy_loopback PRIVATE -Wall -Wextra -Wpedantic
   -Wconversion -Wsign-conversion -Wshadow -Wundef)
 
+add_library(umca_phy_uart STATIC phy/uart/umca_uart.c)
+target_include_directories(umca_phy_uart PUBLIC ${UMCA_INCLUDE}
+  ${CMAKE_CURRENT_SOURCE_DIR}/phy/uart)
+target_compile_definitions(umca_phy_uart PUBLIC ${UMCA_PROFILE_DEFINE})
+target_compile_options(umca_phy_uart PRIVATE -Wall -Wextra -Wpedantic
+  -Wconversion -Wsign-conversion -Wshadow -Wundef)
+
 add_library(umca_pal_posix STATIC ports/posix/umca_posix_pal.c)
 target_include_directories(umca_pal_posix PUBLIC ${UMCA_INCLUDE}
   ${CMAKE_CURRENT_SOURCE_DIR}/ports/posix)
@@ -75,6 +82,15 @@ if(BUILD_TESTING)
   target_compile_options(umca_demo_codec_tests PRIVATE -Wall -Wextra -Wpedantic
     -Wconversion -Wsign-conversion -Wshadow -Wundef)
   add_test(NAME umca_demo_codec_tests COMMAND umca_demo_codec_tests)
+
+  add_executable(umca_uart_phy_tests tests/unit/test_uart_phy.c)
+  target_link_libraries(umca_uart_phy_tests PRIVATE umca_core umca_phy_uart)
+  target_include_directories(umca_uart_phy_tests PRIVATE ${UMCA_INCLUDE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/phy/uart)
+  target_compile_definitions(umca_uart_phy_tests PRIVATE ${UMCA_PROFILE_DEFINE})
+  target_compile_options(umca_uart_phy_tests PRIVATE -Wall -Wextra -Wpedantic
+    -Wconversion -Wsign-conversion -Wshadow -Wundef)
+  add_test(NAME umca_uart_phy_tests COMMAND umca_uart_phy_tests)
 
   if(NOT UMCA_PROFILE_UPPER STREQUAL "MINIMAL")
     add_executable(umca_host_three_nodes tests/integration/test_three_nodes.c)

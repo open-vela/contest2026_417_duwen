@@ -46,6 +46,17 @@ if(CONFIG_UMCA)
     target_link_libraries(umca_phy_loopback PUBLIC umca_core)
   endif()
 
+  if(CONFIG_UMCA_BUILD_UART)
+    nuttx_add_library(umca_phy_uart)
+    target_sources(umca_phy_uart PRIVATE
+      ${UMCA_SRC_DIR}/phy/uart/umca_uart.c
+      ${UMCA_SRC_DIR}/ports/openvela/umca_openvela_uart.c)
+    target_include_directories(umca_phy_uart PUBLIC
+      ${UMCA_SRC_DIR}/include ${UMCA_SRC_DIR}/phy/uart
+      ${UMCA_SRC_DIR}/ports/openvela)
+    target_link_libraries(umca_phy_uart PUBLIC umca_core)
+  endif()
+
   nuttx_add_library(umca_openvela_pal)
   target_sources(umca_openvela_pal PRIVATE
     ${UMCA_SRC_DIR}/ports/openvela/umca_openvela_pal.c)
