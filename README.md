@@ -12,6 +12,9 @@ repository now also contains a static UART PHY, an openvela UART bridge and the
 `umca_gd32` NSH application. Linux build and Windows flashing/debugging steps
 are documented in
 [`docs/GD32F470VKT6_Hardware_Bringup.md`](docs/GD32F470VKT6_Hardware_Bringup.md).
+The hardware baseline keeps NSH on USART0 (PA9/PA10, `/dev/ttyS0`) and assigns
+UMCA to UART4 (PC12/TX, PD2/RX, `/dev/ttyS1`) at 115200 8N1. PC12/PD2 are
+reserved for UMCA, so SDIO must remain disabled in this configuration.
 The hardware flow does not modify or depend on `.vscode/`.
 
 Run the host validation without an openvela checkout:

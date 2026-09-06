@@ -1,3 +1,13 @@
+/****************************************************************************
+ * contest2026_417_duwen/app/openvela_umca_gd32/umca_gd32_main.c
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ****************************************************************************/
+
+/****************************************************************************
+ * Included Files
+ ****************************************************************************/
+
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -10,11 +20,24 @@
 #include <nuttx/sched.h>
 
 #include "umca/umca.h"
+#include "umca_gd32_hw.h"
 #include "umca_openvela_pal.h"
 #include "umca_openvela_uart.h"
 #include "umca_uart.h"
 
+/****************************************************************************
+ * Pre-processor Definitions
+ ****************************************************************************/
+
 #define UMCA_GD32_DEVICE_MAX 31u
+#define UMCA_GD32_PRIORITY \
+  CONFIG_LVX_USE_DEMO_CONTEST2026_417_UMCA_GD32_PRIORITY
+#define UMCA_GD32_STACKSIZE \
+  CONFIG_LVX_USE_DEMO_CONTEST2026_417_UMCA_GD32_STACKSIZE
+
+/****************************************************************************
+ * Private Types
+ ****************************************************************************/
 
 typedef struct
 {
@@ -32,7 +55,15 @@ typedef struct
   umca_context_t context;
 } umca_gd32_service_t;
 
+/****************************************************************************
+ * Private Data
+ ****************************************************************************/
+
 static umca_gd32_service_t g_service;
+
+/****************************************************************************
+ * Private Functions
+ ****************************************************************************/
 
 static int parse_u64(const char *text, uint64_t *value)
 {
@@ -42,12 +73,14 @@ static int parse_u64(const char *text, uint64_t *value)
     {
       return -1;
     }
+
   errno = 0;
   parsed = strtoull(text, &end, 0);
   if (errno != 0 || end == text || *end != '\0')
     {
       return -1;
     }
+
   *value = (uint64_t)parsed;
   return 0;
 }
@@ -60,6 +93,7 @@ static int parse_u32(const char *text, uint32_t *value)
     {
       return -1;
     }
+
   *value = (uint32_t)parsed;
   return 0;
 }
@@ -93,10 +127,12 @@ static int umca_gd32_task(int argc, char *argv[])
       ret = umca_init(&service->context, service->dev_id, service->boot_id,
                       &service->platform, &service->phy);
     }
+
   if (ret == UMCA_OK)
     {
       ret = umca_start(&service->context);
     }
+
   if (ret != UMCA_OK)
     {
       service->last_error = ret;
@@ -119,6 +155,7 @@ static int umca_gd32_task(int argc, char *argv[])
         {
           service->last_error = ret;
         }
+
       usleep(10000);
     }
 
@@ -134,13 +171,40 @@ static int umca_gd32_task(int argc, char *argv[])
 static void usage(void)
 {
   printf("Usage:\n");
+  printf("  umca_gd32 start <dev-id> <boot-id>\n");
   printf("  umca_gd32 start <uart-device> <dev-id> <boot-id>\n");
   printf("  umca_gd32 status\n");
+  printf("  umca_gd32 pinout\n");
   printf("  umca_gd32 stop\n");
 }
 
+static void print_pinout(void)
+{
+  printf("Board: %s, MCU: %s\n", UMCA_GD32_BOARD_NAME,
+         UMCA_GD32_MCU_NAME);
+  printf("NSH: %s %s TX=%s RX=%s %d %s\n",
+         UMCA_GD32_CONSOLE_DEVICE, UMCA_GD32_CONSOLE_INSTANCE,
+         UMCA_GD32_CONSOLE_TX_PIN, UMCA_GD32_CONSOLE_RX_PIN,
+         UMCA_GD32_CONSOLE_BAUD, UMCA_GD32_CONSOLE_FORMAT);
+  printf("UMCA: %s %s TX=%s RX=%s AF%d %d %s\n",
+         UMCA_GD32_UART_DEVICE, UMCA_GD32_UART_INSTANCE,
+         UMCA_GD32_UART_TX_PIN, UMCA_GD32_UART_RX_PIN,
+         UMCA_GD32_UART_AF, UMCA_GD32_UART_BAUD,
+         UMCA_GD32_UART_FORMAT);
+  printf("Electrical: %s, common GND, no RTS/CTS, no DMA\n",
+         UMCA_GD32_UART_ELECTRICAL);
+  printf("Reserved: PC12/PD2 for UMCA; SDIO must remain disabled\n");
+}
+
+/****************************************************************************
+ * Public Functions
+ ****************************************************************************/
+
 int umca_gd32_main(int argc, char *argv[])
 {
+  const char *boot_arg;
+  const char *device;
+  const char *dev_arg;
   uint64_t dev_id;
   uint32_t boot_id;
 
@@ -152,38 +216,61 @@ int umca_gd32_main(int argc, char *argv[])
              g_service.last_error);
       return 0;
     }
+
+  if (argc == 2 && strcmp(argv[1], "pinout") == 0)
+    {
+      print_pinout();
+      return 0;
+    }
+
   if (argc == 2 && strcmp(argv[1], "stop") == 0)
     {
       g_service.running = false;
       return 0;
     }
-  if (argc != 5 || strcmp(argv[1], "start") != 0)
+
+  if ((argc != 4 && argc != 5) || strcmp(argv[1], "start") != 0)
     {
       usage();
       return 1;
     }
+
+  if (argc == 4)
+    {
+      device = UMCA_GD32_UART_DEVICE;
+      dev_arg = argv[2];
+      boot_arg = argv[3];
+    }
+  else
+    {
+      device = argv[2];
+      dev_arg = argv[3];
+      boot_arg = argv[4];
+    }
+
   if (g_service.active)
     {
       printf("UMCA GD32 service is already running\n");
       return 1;
     }
-  if (strlen(argv[2]) > UMCA_GD32_DEVICE_MAX ||
-      parse_u64(argv[3], &dev_id) != 0 || dev_id == UMCA_INVALID_DEVID ||
-      parse_u32(argv[4], &boot_id) != 0)
+
+  if (strlen(device) > UMCA_GD32_DEVICE_MAX ||
+      parse_u64(dev_arg, &dev_id) != 0 || dev_id == UMCA_INVALID_DEVID ||
+      parse_u32(boot_arg, &boot_id) != 0)
     {
       usage();
       return 1;
     }
 
   memset(&g_service, 0, sizeof(g_service));
-  memcpy(g_service.device, argv[2], strlen(argv[2]) + 1u);
+  memcpy(g_service.device, device, strlen(device) + 1u);
   g_service.dev_id = (umca_devid_t)dev_id;
   g_service.boot_id = boot_id;
   g_service.running = true;
   g_service.active = true;
   g_service.task = task_create("umca_gd32",
-                               CONFIG_LVX_USE_DEMO_CONTEST2026_417_UMCA_GD32_PRIORITY,
-                               CONFIG_LVX_USE_DEMO_CONTEST2026_417_UMCA_GD32_STACKSIZE,
+                               UMCA_GD32_PRIORITY,
+                               UMCA_GD32_STACKSIZE,
                                umca_gd32_task, NULL);
   if (g_service.task < 0)
     {
@@ -192,5 +279,6 @@ int umca_gd32_main(int argc, char *argv[])
       printf("UMCA GD32 task_create failed: %d\n", (int)g_service.task);
       return 1;
     }
+
   return 0;
 }
