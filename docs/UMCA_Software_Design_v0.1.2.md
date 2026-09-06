@@ -1307,13 +1307,22 @@ export PYTHONPATH=/path/to/openvela/prebuilts/tools/python/dist-packages/kconfig
 make -j$(nproc)
 ```
 
-板级 `nsh` 默认控制台为 USART0，PA9 为 TX、PA10 为 RX、115200 8N1。UMCA UART
-PHY 使用独立字节流适配器，组帧规则为搜索 UMCA `0x55 0x4D`、读取固定 36 字节帧头、
-按 Payload 长度收齐完整帧，再交给 Core 校验 CRC；适配器不在 ISR 中调用 Core。
-串口设备路径、UMCA 角色和 UART 对端尚未在软件中硬编码，必须根据实际接线确认，
-避免 NSH 控制台与 UMCA 数据链路复用。
+板级 `nsh` 控制台固定为 USART0，PA9 为 TX、PA10 为 RX、115200 8N1，对应
+`/dev/ttyS0`。UMCA 固定使用 UART4，PC12 为 TX、PD2 为 RX、AF8、115200 8N1，
+对应 `/dev/ttyS1`。两路串口不复用；UART4 采用 3.3 V TTL、共地、无 RTS/CTS，
+首轮联调关闭 DMA。PC12/PD2 与 SDIO_CLK/SDIO_CMD 复用，因此该构建必须禁用 SDIO。
+
+UMCA UART PHY 使用独立字节流适配器，组帧规则为搜索 UMCA `0x55 0x4D`、读取固定
+36 字节帧头、按 Payload 长度收齐完整帧，再交给 Core 校验 CRC；适配器不在 ISR 中
+调用 Core。默认 NSH 命令为 `umca_gd32 start <dev-id> <boot-id>`，也允许在诊断时以
+四参数形式覆盖设备路径。`umca_gd32 pinout` 用于在实板端核对编译进固件的接口定义。
+GD32 的业务角色与对端类型仍由应用部署决定，不改变已冻结的 UART 物理接口。
 
 本阶段不修改 `.vscode/`，也不依赖任何 IDE 任务或用户目录配置。
+
+当前上游 GD32F4 `arm_earlyserialinit()` 对稀疏串口表缺少空指针保护；本地 NuttX
+修复为先判断 `g_uart_devs[i]` 再访问私有状态。该修复是硬件启动前置条件，独立于
+UMCA Core 和 UART PHY，并应在公共 NuttX 仓单独维护。
 
 ### 18.4 NSH命令
 
@@ -2055,11 +2064,14 @@ QuickApp 缺失 LFS 库和宿主 `libpulse.so.0` 是环境准备问题，不是 
 - 发送端短写循环；
 - 无数据轮询不阻塞。
 
-该适配器已经完成主机验证，但尚未连接 GD32 实板；实板验证仍需串口对端、实际
-设备节点/引脚和 Windows 端烧录调试记录。
+该适配器已经完成主机验证，但尚未连接 GD32 实板。硬件接口现已确定为 UART4、
+PC12/TX、PD2/RX、AF8、115200 8N1、3.3 V TTL 和 `/dev/ttyS1`；实板验证仍需
+串口对端和 Windows 端烧录调试记录。USART0/PA9/PA10 `/dev/ttyS0` 保持为 NSH，
+SDIO 因 PC12/PD2 复用冲突而保持关闭。
 
 Linux 当前配置的资源结果为：最小 NSH 基线 Flash 230,004 B、SRAM 6,700 B；启用
-`umca_gd32` 后 Flash 243,760 B、SRAM 15,232 B，增量分别为 13,756 B 和 8,532 B。
+UART4 和 `umca_gd32` 后 Flash 244,648 B、SRAM 15,920 B，增量分别为 14,644 B 和
+9,220 B。
 ELF 已包含应用入口、UART PHY、openvela UART 桥接和 Discovery ANNOUNCE 符号。
 
 ---

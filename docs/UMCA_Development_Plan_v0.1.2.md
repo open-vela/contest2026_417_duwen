@@ -682,10 +682,14 @@ ai_agent 的实际接入位于 `app/openvela_umca_agent`：适配层使用弱引
 - Windows：连接板载 GD-Link/CMSIS-DAP，执行烧录、复位、串口观察和 GDB 调试；
 - `.vscode/`：本阶段不修改，也不把 IDE 配置作为构建依赖。
 
-当前先完成可审查的交叉编译和 UART PHY 主机验证，再进行实板烧录。板级上游配置
-已确认 USART0 默认使用 PA9/PA10、115200 8N1；若将该串口同时用于 UMCA 数据链路，
-必须先确认不会与 NSH 控制台复用。USART3/Virtual COM Port 或其他排针串口的实际
-接线、对端设备和电平标准需在硬件联调前明确，不能由软件侧推断。
+硬件接口现已冻结：USART0 使用 PA9/PA10、115200 8N1，作为 `/dev/ttyS0` NSH
+控制台；UMCA 独占 UART4，使用 PC12/TX、PD2/RX、AF8、115200 8N1，对应
+`/dev/ttyS1`。链路采用 3.3 V CMOS TTL、双方共地、TX/RX 交叉连接，不启用 RTS/CTS，
+首轮联调不启用 DMA。PC12/PD2 与 SDIO_CLK/SDIO_CMD 复用，因此 UMCA 基线显式关闭
+SDIO，后续不得在不重新评审引脚的情况下同时启用。
+
+上游 Kconfig 当前没有 `GD32F470VK` 芯片项，板级暂以 `GD32F470IK` 兼容项描述同系列
+外设；目标实物和链接内存布局仍严格按 GD32F470VKT6/LQFP100 管理。
 
 Linux 端的官方板级 Make 流程为：
 
@@ -705,9 +709,9 @@ make -j$(nproc)
 缺少 CMake 构建入口而失败；这不是 UMCA 代码错误，因此 GD32 阶段固定采用上面的
 Make/configure 路径，除非上游补齐该架构的 CMake 支持。
 
-Linux 实测的最小 NSH 基线为 Flash 230,004 B、SRAM 6,700 B；启用通用
-`umca_gd32` 应用后为 Flash 243,760 B、SRAM 15,232 B，增量为 Flash 13,756 B、
-SRAM 8,532 B。该数据只用于当前配置的资源门禁，不替代后续实板栈峰值测量。
+Linux 实测的最小 NSH 基线为 Flash 230,004 B、SRAM 6,700 B；启用 UART4 和
+`umca_gd32` 应用后为 Flash 244,648 B、SRAM 15,920 B，增量为 Flash 14,644 B、
+SRAM 9,220 B。这些数据只用于当前配置的资源门禁，不替代后续实板栈峰值测量。
 
 Windows 端建议使用板载 GD-Link 的 CMSIS-DAP 接口，通过 OpenOCD 或 SEGGER/J-Link
 兼容工具完成烧录和 GDB 连接。烧录地址、复位方式和目标脚本必须以实际 Windows
@@ -744,6 +748,7 @@ Windows 端建议使用板载 GD-Link 的 CMSIS-DAP 接口，通过 OpenOCD 或 
 - 没有将Goldfish预编译库带入GD32目标。
 - UART PHY 字节流适配器已完成主机分片、粘包和短写测试；在实板上完成串口收发前，
   状态仍标记为“接口完成、硬件未验证”。
+- UART4/PC12/PD2、`/dev/ttyS1`、115200 8N1 和 SDIO 互斥约束已进入构建配置与文档。
 
 ### 9.7 阶段6：硬件到位后的GD32与ESP32验证
 
@@ -760,6 +765,9 @@ Windows 端建议使用板载 GD-Link 的 CMSIS-DAP 接口，通过 OpenOCD 或 
 本阶段的第一条实板路径是“GD32 启动与串口可观测性”，然后才是 GD32↔ESP32 的
 UMCA 帧互操作。烧录成功、NSH 可见和 UART 回显成功只能证明板级启动/串口链路，
 不能直接证明 UMCA 帧已通过 CRC、Sequence 和 Topic 路由验证。
+
+首轮硬件接线固定为 GD32 PC12/UART4_TX→对端 RX、GD32 PD2/UART4_RX←对端 TX、
+GND↔GND。对端必须是 3.3 V TTL；不得直接连接 RS-232 电平或 5 V TTL。
 
 #### ESP32边界
 

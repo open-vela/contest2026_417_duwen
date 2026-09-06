@@ -18,10 +18,16 @@ DISCOVERY 主机测试在 AddressSanitizer/UndefinedBehaviorSanitizer（关闭 L
 
 硬件阶段（2026-09-06）：目标板确认是 GD32F470V-START，MCU 为 GD32F470VKT6。
 UART 静态字节流 PHY、openvela 文件描述符桥接和通用 `umca_gd32` NSH 应用已实现，
-主机 4/4 测试通过。包含 UMCA 的 GD32 固件已在 Linux 端成功链接：Flash 243,760 B，
-SRAM region 15,232 B；相对最小 NSH 基线分别增加 13,756 B 和 8,532 B。实板烧录、
-USART 引脚/对端确认、UART 帧互操作和 GD32↔ESP32 透传仍待完成。
+主机 4/4 测试通过。包含 UART4 和 UMCA 的 GD32 固件已在 Linux 端成功链接：
+Flash 244,648 B，SRAM region 15,920 B；相对最小 NSH 基线分别增加 14,644 B 和
+9,220 B。硬件接口已冻结为 UART4、PC12/TX、PD2/RX、AF8、115200 8N1、
+3.3 V TTL、`/dev/ttyS1`；
+USART0/PA9/PA10 `/dev/ttyS0` 保留给 NSH，SDIO 因引脚冲突保持关闭。实板烧录、
+UART 帧互操作和 GD32↔ESP32 透传仍待完成。
 Linux 负责编译，Windows 负责 GD-Link/CMSIS-DAP 烧录和 GDB 调试；`.vscode/` 未修改。
+同时已修复本地 NuttX GD32F4 早期串口初始化对空槽位的空指针解引用；该公共仓改动
+与参赛仓代码分开维护，本地提交为 `c42f0d1da26`（未推送）；GD32 全量编译和
+NuttX `checkpatch.sh` 已通过。
 
 尚未实现的协议能力保持关闭：分段、RPC、ACK/ERROR、QoS-1/2/3、网关、多路径、
 安全和动态内存。Goldfish Loopback 资源数据不得外推为 GD32 资源结论。

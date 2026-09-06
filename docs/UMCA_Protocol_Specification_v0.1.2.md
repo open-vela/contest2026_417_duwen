@@ -760,6 +760,11 @@ typedef struct {
 主机测试或 Goldfish Loopback 结果替代。Linux/Windows 工具链分工不属于线级协议：
 Linux 生成固件，Windows 执行烧录和调试。
 
+GD32 MVP 物理 Profile 固定为 UART4、PC12/TX、PD2/RX、AF8、115200 8N1、3.3 V
+CMOS TTL、共地、无 RTS/CTS；NuttX 设备为 `/dev/ttyS1`。USART0/PA9/PA10
+`/dev/ttyS0` 保留给 NSH。PC12/PD2 与 SDIO_CLK/SDIO_CMD 互斥，本 Profile 禁用
+SDIO。上述内容只冻结物理承载，不改变 UMCA 帧格式、字节序、CRC 或消息语义。
+
 **[未实现]** CAN FD PHY。
 
 **[未实现]** SPI PHY。

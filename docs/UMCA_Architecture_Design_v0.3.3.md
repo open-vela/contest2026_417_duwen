@@ -799,7 +799,7 @@ MVP能力固定为QoS-0。收到QoS-1~3帧时必须拒绝，不得解析后降�
 | 每节点宣告 Topic | `UMCA_MAX_TOPICS_PER_NODE=8` |
 | 默认收发队列 | RX 4 帧、TX 4 帧，编译期可调 |
 | PAL | `ops + user + mutex`注入；首期支持openvela、POSIX/Linux |
-| PHY | `ops + driver`多实例；Loopback实现，UART定义并待硬件验证 |
+| PHY | `ops + driver`多实例；Loopback实现；GD32 UART4 接口已冻结并待实板验证 |
 | 服务发现 | ANNOUNCE、HEARTBEAT、TEARDOWN |
 | Flags | 固定为0；ACK和ERROR不实现 |
 | QoS | 固定为0；其他值拒绝，不静默降级 |
@@ -832,12 +832,14 @@ MVP能力固定为QoS-0。收到QoS-1~3帧时必须拒绝，不得解析后降�
 | 服务发现与多实例 Loopback | 已完成 | Sensor、Agent、Actuator 三个 Context 完成 ANNOUNCE/HEARTBEAT/DATA |
 | Goldfish 三节点闭环 | 已完成 | 温度发布 → 阈值事件 → FanCommand → FanState ACK |
 | ai_agent Tool 运行时接入 | 已完成 | app-level provider 注册 `sensor_query`、`device_control` |
-| UART/GD32/ESP32 | 适配器完成，硬件未验证 | UART 字节流 Adapter 已主机测试；等待 GD32F470VKT6 实板与对端互操作 |
+| UART/GD32/ESP32 | 接口冻结，硬件未验证 | UART4 PC12/TX、PD2/RX、AF8、115200 8N1、`/dev/ttyS1`；等待实板与对端互操作 |
 
-2026-09-06 硬件阶段已确认目标板为 GD32F470V-START，MCU 为 GD32F470VKT6；UART
-字节流 Adapter 已完成主机分片/粘包测试，但尚未完成实板烧录和串口互操作。Linux
-负责交叉编译，Windows 负责 GD-Link/CMSIS-DAP 烧录与 GDB 调试；`.vscode/` 不属于
-构建或验证输入。
+2026-09-06 硬件阶段已确认目标板为 GD32F470V-START，MCU 为 GD32F470VKT6。NSH
+保留 USART0/PA9/PA10 `/dev/ttyS0`，UMCA 分配 UART4/PC12/PD2 AF8
+`/dev/ttyS1`，链路为 3.3 V TTL、115200 8N1、无流控且首轮不使用 DMA。PC12/PD2
+与 SDIO 时钟/命令复用，因此本基线禁用 SDIO。UART 字节流 Adapter 已完成主机
+分片/粘包测试，但尚未完成实板烧录和串口互操作。Linux 负责交叉编译，Windows 负责
+GD-Link/CMSIS-DAP 烧录与 GDB 调试；`.vscode/` 不属于构建或验证输入。
 
 Demo 集成层允许弱引用 ai_agent provider，使 UMCA 三节点服务在没有 ai_agent
 应用时仍可独立链接；当 `packages/ai_agent` 被加入同一 NuttX 镜像后，适配层调用
