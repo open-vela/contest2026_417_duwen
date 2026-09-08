@@ -5,7 +5,7 @@ config LVX_USE_DEMO_CONTEST2026_417_UMCA_GD32
 	select UMCA_BUILD_UART
 	---help---
 		Build a single-context UMCA discovery node for GD32F470V-START. The
-		default UMCA link is UART4 on PC12/TX and PD2/RX, exposed as
+		default UMCA link is UART3 on PC10/TX and PC11/RX, exposed as
 		/dev/ttyS1 when USART0 remains the NSH console. A device-path override
 		can still be supplied at runtime for diagnostics.
 

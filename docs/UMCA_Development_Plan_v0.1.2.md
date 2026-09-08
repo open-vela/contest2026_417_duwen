@@ -682,11 +682,16 @@ ai_agent 的实际接入位于 `app/openvela_umca_agent`：适配层使用弱引
 - Windows：连接板载 GD-Link/CMSIS-DAP，执行烧录、复位、串口观察和 GDB 调试；
 - `.vscode/`：本阶段不修改，也不把 IDE 配置作为构建依赖。
 
-硬件接口现已冻结：USART0 使用 PA9/PA10、115200 8N1，作为 `/dev/ttyS0` NSH
-控制台；UMCA 独占 UART4，使用 PC12/TX、PD2/RX、AF8、115200 8N1，对应
+硬件接口现已冻结：USART0 使用 PB6/PB7、AF7、115200 8N1，作为 `/dev/ttyS0` NSH
+控制台；UMCA 独占 UART3，使用 PC10/TX、PC11/RX、AF8、115200 8N1，对应
 `/dev/ttyS1`。链路采用 3.3 V CMOS TTL、双方共地、TX/RX 交叉连接，不启用 RTS/CTS，
-首轮联调不启用 DMA。PC12/PD2 与 SDIO_CLK/SDIO_CMD 复用，因此 UMCA 基线显式关闭
-SDIO，后续不得在不重新评审引脚的情况下同时启用。
+首轮联调不启用 DMA。PC10/PC11 与 SDIO_D2/SDIO_D3 复用，因此 UMCA 基线显式关闭
+SDIO，后续不得在不重新评审引脚的情况下同时启用。PA9 和 PD2 分别接入板载 USB
+VBUS 检测与电源控制网络，不再用于 UART。
+同轮审计已将继承自 I-EVAL 且需要 GPIOF-I 的 SPI5、ENET、EXMC、TLI 和
+DCI 旧映射改为编译期拒绝。200 MHz Profile 的 PLLQ 实际为 50 MHz，因此
+当前时钟驱动下不启用 USB FS、SDIO 或 TRNG；需要这些外设时应改用
+168 MHz 或 240 MHz Profile 并重新审查引脚。
 
 上游 Kconfig 当前没有 `GD32F470VK` 芯片项，板级暂以 `GD32F470IK` 兼容项描述同系列
 外设；目标实物和链接内存布局仍严格按 GD32F470VKT6/LQFP100 管理。
@@ -709,9 +714,9 @@ make -j$(nproc)
 缺少 CMake 构建入口而失败；这不是 UMCA 代码错误，因此 GD32 阶段固定采用上面的
 Make/configure 路径，除非上游补齐该架构的 CMake 支持。
 
-Linux 实测的最小 NSH 基线为 Flash 230,004 B、SRAM 6,700 B；启用 UART4 和
-`umca_gd32` 应用后为 Flash 244,648 B、SRAM 15,920 B，增量为 Flash 14,644 B、
-SRAM 9,220 B。这些数据只用于当前配置的资源门禁，不替代后续实板栈峰值测量。
+Linux 实测的最小 NSH 历史基线为 Flash 230,004 B、SRAM 6,700 B；2026-09-08
+切换 UART3 并重新全量链接后，`umca_gd32` 固件为 Flash 244,640 B、SRAM 15,920 B。
+这些数据只用于当前配置的资源门禁，不替代后续实板栈峰值测量。
 
 Windows 端建议使用板载 GD-Link 的 CMSIS-DAP 接口，通过 OpenOCD 或 SEGGER/J-Link
 兼容工具完成烧录和 GDB 连接。烧录地址、复位方式和目标脚本必须以实际 Windows
@@ -748,7 +753,7 @@ Windows 端建议使用板载 GD-Link 的 CMSIS-DAP 接口，通过 OpenOCD 或 
 - 没有将Goldfish预编译库带入GD32目标。
 - UART PHY 字节流适配器已完成主机分片、粘包和短写测试；在实板上完成串口收发前，
   状态仍标记为“接口完成、硬件未验证”。
-- UART4/PC12/PD2、`/dev/ttyS1`、115200 8N1 和 SDIO 互斥约束已进入构建配置与文档。
+- UART3/PC10/PC11、`/dev/ttyS1`、115200 8N1 和 SDIO 互斥约束已进入构建配置与文档。
 
 ### 9.7 阶段6：硬件到位后的GD32与ESP32验证
 
@@ -766,7 +771,7 @@ Windows 端建议使用板载 GD-Link 的 CMSIS-DAP 接口，通过 OpenOCD 或 
 UMCA 帧互操作。烧录成功、NSH 可见和 UART 回显成功只能证明板级启动/串口链路，
 不能直接证明 UMCA 帧已通过 CRC、Sequence 和 Topic 路由验证。
 
-首轮硬件接线固定为 GD32 PC12/UART4_TX→对端 RX、GD32 PD2/UART4_RX←对端 TX、
+首轮硬件接线固定为 GD32 PC10/UART3_TX→对端 RX、GD32 PC11/UART3_RX←对端 TX、
 GND↔GND。对端必须是 3.3 V TTL；不得直接连接 RS-232 电平或 5 V TTL。
 
 #### ESP32边界

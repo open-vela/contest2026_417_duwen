@@ -1307,10 +1307,15 @@ export PYTHONPATH=/path/to/openvela/prebuilts/tools/python/dist-packages/kconfig
 make -j$(nproc)
 ```
 
-板级 `nsh` 控制台固定为 USART0，PA9 为 TX、PA10 为 RX、115200 8N1，对应
-`/dev/ttyS0`。UMCA 固定使用 UART4，PC12 为 TX、PD2 为 RX、AF8、115200 8N1，
-对应 `/dev/ttyS1`。两路串口不复用；UART4 采用 3.3 V TTL、共地、无 RTS/CTS，
-首轮联调关闭 DMA。PC12/PD2 与 SDIO_CLK/SDIO_CMD 复用，因此该构建必须禁用 SDIO。
+板级 `nsh` 控制台固定为 USART0，PB6 为 TX、PB7 为 RX、AF7、115200 8N1，对应
+`/dev/ttyS0`。UMCA 固定使用 UART3，PC10 为 TX、PC11 为 RX、AF8、115200 8N1，
+对应 `/dev/ttyS1`。两路串口不复用；UART3 采用 3.3 V TTL、共地、无 RTS/CTS，
+首轮联调关闭 DMA。PC10/PC11 与 SDIO_D2/SDIO_D3 复用，因此该构建必须禁用 SDIO。
+PA9 与 PD2 因板载 USB 网络负载不再用作 UART。
+构建 Profile 同时关闭 SPI5、ENET、EXMC、TLI 和 DCI 等不适用 LQFP100
+封装或 V-START 走线的继承配置。默认 200 MHz 下 PLLQ=50 MHz，当前时钟
+代码未完成 IRC48M 域切换，因此 USB FS、SDIO 和 TRNG 也在该 Profile 中
+关闭。
 
 UMCA UART PHY 使用独立字节流适配器，组帧规则为搜索 UMCA `0x55 0x4D`、读取固定
 36 字节帧头、按 Payload 长度收齐完整帧，再交给 Core 校验 CRC；适配器不在 ISR 中
@@ -2064,14 +2069,14 @@ QuickApp 缺失 LFS 库和宿主 `libpulse.so.0` 是环境准备问题，不是 
 - 发送端短写循环；
 - 无数据轮询不阻塞。
 
-该适配器已经完成主机验证，但尚未连接 GD32 实板。硬件接口现已确定为 UART4、
-PC12/TX、PD2/RX、AF8、115200 8N1、3.3 V TTL 和 `/dev/ttyS1`；实板验证仍需
-串口对端和 Windows 端烧录调试记录。USART0/PA9/PA10 `/dev/ttyS0` 保持为 NSH，
-SDIO 因 PC12/PD2 复用冲突而保持关闭。
+该适配器已经完成主机验证，但尚未连接 GD32 实板。硬件接口现已确定为 UART3、
+PC10/TX、PC11/RX、AF8、115200 8N1、3.3 V TTL 和 `/dev/ttyS1`；实板验证仍需
+串口对端和 Windows 端烧录调试记录。USART0/PB6/PB7 `/dev/ttyS0` 保持为 NSH，
+SDIO 因 PC10/PC11 复用冲突而保持关闭。
 
-Linux 当前配置的资源结果为：最小 NSH 基线 Flash 230,004 B、SRAM 6,700 B；启用
-UART4 和 `umca_gd32` 后 Flash 244,648 B、SRAM 15,920 B，增量分别为 14,644 B 和
-9,220 B。
+Linux 当前配置的资源结果为：2026-09-08 切换 UART3 并重新全量链接后，
+`umca_gd32` 固件 Flash 244,640 B、SRAM 15,920 B。历史最小 NSH 基线为
+Flash 230,004 B、SRAM 6,700 B。
 ELF 已包含应用入口、UART PHY、openvela UART 桥接和 Discovery ANNOUNCE 符号。
 
 ---
