@@ -193,7 +193,7 @@ static void print_pinout(void)
          UMCA_GD32_UART_FORMAT);
   printf("Electrical: %s, common GND, no RTS/CTS, no DMA\n",
          UMCA_GD32_UART_ELECTRICAL);
-  printf("Reserved: PC12/PD2 for UMCA; SDIO must remain disabled\n");
+  printf("Reserved: PC10/PC11 for UMCA; SDIO must remain disabled\n");
 }
 
 /****************************************************************************
