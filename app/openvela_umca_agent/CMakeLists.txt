@@ -3,12 +3,13 @@ if(CONFIG_LVX_USE_DEMO_CONTEST2026_417_UMCA_AGENT)
   get_filename_component(UMCA_REPO_DIR ${UMCA_AGENT_DIR}/../.. REALPATH)
   nuttx_add_application(
     NAME umca_agent
-    SRCS demo/demo_codec.c adapter/umca_agent_adapter.c
+    SRCS ${UMCA_REPO_DIR}/app/umca_demo/demo_codec.c
+         adapter/umca_agent_adapter.c
          service/umca_service.c umca_agent_main.c
     STACKSIZE 16384)
   target_include_directories(apps_umca_agent PRIVATE
     ${UMCA_AGENT_DIR}
-    ${UMCA_AGENT_DIR}/demo
+    ${UMCA_REPO_DIR}/app/umca_demo
     ${UMCA_AGENT_DIR}/adapter
     ${UMCA_AGENT_DIR}/service
     ${NUTTX_DIR}/../packages/ai_agent/include

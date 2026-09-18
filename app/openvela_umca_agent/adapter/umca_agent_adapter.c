@@ -4,7 +4,7 @@
 
 #include "tools/tool_registry.h"
 
-#include "demo/demo_topics.h"
+#include "demo_topics.h"
 #include "umca_agent_adapter.h"
 
 /* The UMCA service can run without the optional ai_agent application.  When

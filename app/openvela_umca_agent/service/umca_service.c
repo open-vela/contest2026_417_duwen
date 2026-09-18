@@ -11,7 +11,7 @@
 
 #include <nuttx/sched.h>
 
-#include "demo/demo_topics.h"
+#include "demo_topics.h"
 #include "adapter/umca_agent_adapter.h"
 #include "service/umca_service.h"
 #include "umca/umca.h"

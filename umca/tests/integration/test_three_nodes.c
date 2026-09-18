@@ -61,6 +61,7 @@ int main(void)
   umca_phy_t phy[3];
   umca_platform_t platform = {&platform_ops, NULL, NULL};
   umca_context_t ctx[3];
+  umca_node_info_t node;
   callback_state_t callback = {0};
   umca_topic_id_t topic;
   uint16_t processed;
@@ -95,6 +96,12 @@ int main(void)
     {
       (void)umca_poll(&ctx[i], &processed);
     }
+  assert(umca_node_get(&ctx[1], UINT64_C(0x1001), &node) == UMCA_OK);
+  assert(node.topic_count == 1);
+  assert(node.topics[0].topic_id == topic);
+  assert(node.topics[0].direction == UMCA_TOPIC_PUBLISHER);
+  assert(node.topics[0].name_length == strlen("/sensors/temperature"));
+  assert(strcmp(node.topics[0].name, "/sensors/temperature") == 0);
   assert(umca_publish(&ctx[0], topic, UINT64_C(0x2001),
                       (const uint8_t *)"tmp", 3) == UMCA_OK);
   (void)umca_poll(&ctx[1], &processed);

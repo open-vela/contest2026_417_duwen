@@ -22,5 +22,48 @@ int main(void)
            command.command == command_decoded.command &&
            command.source == command_decoded.source);
   }
+  {
+    static const uint8_t text[] = "turn fan on";
+    demo_llm_chat_request_t request =
+      {
+        UINT32_C(0x47000001), 7, 15000, DEMO_LLM_ORIGIN_TERMINAL,
+        (uint16_t)(sizeof(text) - 1u), text
+      };
+    demo_llm_chat_request_t request_decoded;
+    uint8_t chat_payload[256];
+    uint16_t chat_length;
+    assert(demo_encode_llm_chat_request(&request, chat_payload,
+                                        &chat_length) == 0);
+    assert(chat_length == DEMO_LLM_CHAT_REQUEST_HEADER_SIZE +
+                          sizeof(text) - 1u);
+    assert(demo_decode_llm_chat_request(chat_payload, chat_length,
+                                        &request_decoded) == 0);
+    assert(request_decoded.requester_boot_id == request.requester_boot_id);
+    assert(request_decoded.request_id == request.request_id);
+    assert(request_decoded.timeout_ms == request.timeout_ms);
+    assert(request_decoded.text_length == request.text_length);
+  }
+  {
+    static const uint8_t text[] = "accepted";
+    demo_llm_chat_response_t response =
+      {
+        UINT32_C(0x47000001), 7, DEMO_LLM_STATUS_OK,
+        DEMO_LLM_ACTION_SET_FAN, 1, (uint16_t)(sizeof(text) - 1u), text
+      };
+    demo_llm_chat_response_t response_decoded;
+    uint8_t chat_payload[256];
+    uint16_t chat_length;
+    assert(demo_encode_llm_chat_response(&response, chat_payload,
+                                         &chat_length) == 0);
+    assert(demo_decode_llm_chat_response(chat_payload, chat_length,
+                                         &response_decoded) == 0);
+    assert(response_decoded.requester_boot_id == response.requester_boot_id);
+    assert(response_decoded.request_id == response.request_id);
+    assert(response_decoded.action_type == DEMO_LLM_ACTION_SET_FAN);
+    assert(response_decoded.action_value == 1);
+    response.action_type = DEMO_LLM_ACTION_NONE;
+    assert(demo_encode_llm_chat_response(&response, chat_payload,
+                                         &chat_length) != 0);
+  }
   return 0;
 }

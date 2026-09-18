@@ -131,6 +131,7 @@ static int parse_announce(const uint8_t *payload, uint16_t length,
       topics[i].name_length = name_length;
       memcpy(topics[i].name, payload + offset, name_length);
       topics[i].name[name_length] = '\0';
+      topics[i].used = true;
       offset = (uint16_t)(offset + name_length);
     }
   return offset == length ? UMCA_OK : UMCA_ERR_BAD_PAYLOAD;
@@ -373,6 +374,7 @@ int umca_node_get(const umca_context_t *ctx, umca_devid_t dev_id,
                   umca_node_info_t *out)
 {
   unsigned int i;
+  uint8_t j;
   int ret;
   if (ctx == NULL || out == NULL)
     {
@@ -397,7 +399,15 @@ int umca_node_get(const umca_context_t *ctx, umca_devid_t dev_id,
           out->last_uptime_ms = ctx->nodes[i].last_uptime_ms;
           out->remote_status = ctx->nodes[i].remote_status;
           out->topic_count = ctx->nodes[i].topic_count;
-          memcpy(out->topics, ctx->nodes[i].topics, sizeof(out->topics));
+          for (j = 0; j < out->topic_count; j++)
+            {
+              out->topics[j].topic_id = ctx->nodes[i].topics[j].topic_id;
+              out->topics[j].direction = ctx->nodes[i].topics[j].direction;
+              out->topics[j].name_length =
+                ctx->nodes[i].topics[j].name_length;
+              memcpy(out->topics[j].name, ctx->nodes[i].topics[j].name,
+                     (size_t)out->topics[j].name_length + 1u);
+            }
           umca_unlock((umca_context_t *)ctx);
           return UMCA_OK;
         }
