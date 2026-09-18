@@ -665,7 +665,8 @@ umca demo stop
   `result == 0` 的 FanState，默认超时 1000ms。
 - LLM不可用时UMCA继续运行。**已完成**；本地规则路径不依赖 LLM。
 - 本地规则可完成确定性闭环演示。**已完成**。
-- LLM可用时可展示智能决策扩展。**接口保留，尚未进行真实 LLM 策略验证**。
+- LLM可用时可展示智能决策扩展。**已完成**；实体ESP32-S3调用MiMo云端API的C1文本
+  回复和有限动作建议已于2026-09-18通过最终混合实物验收。
 
 ai_agent 的实际接入位于 `app/openvela_umca_agent`：适配层使用弱引用保持 Core
 独立，在 ai_agent 应用进入同一 NuttX 镜像后注册 `umca` provider，并失效工具缓存
@@ -714,8 +715,10 @@ make -j$(nproc)
 缺少 CMake 构建入口而失败；这不是 UMCA 代码错误，因此 GD32 阶段固定采用上面的
 Make/configure 路径，除非上游补齐该架构的 CMake 支持。
 
-Linux 实测的最小 NSH 历史基线为 Flash 230,004 B、SRAM 6,700 B；2026-09-08
-切换 UART3 并重新全量链接后，`umca_gd32` 固件为 Flash 244,640 B、SRAM 15,920 B。
+Linux 实测的最小 NSH 历史基线为 Flash 230,004 B、SRAM 6,700 B；2026-09-09
+完成 UART3 验证及远端 Topic 状态修复并重新全量链接后，`umca_gd32` 固件为 Flash
+244,656 B、SRAM 15,920 B。2026-09-08 的初始 UART3 构件 Flash 244,640 B 保留为
+历史对照。
 这些数据只用于当前配置的资源门禁，不替代后续实板栈峰值测量。
 
 Windows 端建议使用板载 GD-Link 的 CMSIS-DAP 接口，通过 OpenOCD 或 SEGGER/J-Link
@@ -751,8 +754,9 @@ Windows 端建议使用板载 GD-Link 的 CMSIS-DAP 接口，通过 OpenOCD 或 
 - UMCA自身资源满足预算或有明确裁剪方案。
 - 固件总体不超过目标Code Flash和SRAM区域。
 - 没有将Goldfish预编译库带入GD32目标。
-- UART PHY 字节流适配器已完成主机分片、粘包和短写测试；在实板上完成串口收发前，
-  状态仍标记为“接口完成、硬件未验证”。
+- UART PHY 字节流适配器已完成主机分片、粘包和短写测试；2026-09-09 已在实板完成
+  UART3 双向收发及 UMCA 基础互操作验收（ANNOUNCE、HEARTBEAT、CRC32C、帧长度、协议
+  语义、节点上线、Sequence），错误码为 0 且无 HardFault。
 - UART3/PC10/PC11、`/dev/ttyS1`、115200 8N1 和 SDIO 互斥约束已进入构建配置与文档。
 
 ### 9.7 阶段6：硬件到位后的GD32与ESP32验证
@@ -761,8 +765,8 @@ Windows 端建议使用板载 GD-Link 的 CMSIS-DAP 接口，通过 OpenOCD 或 
 
 1. 验证系统启动、时钟和串口。
 2. 实现并验证UART PHY Adapter。
-3. ESP32运行极简UMCA透传节点固件。
-4. 建立UART到WiFi的完整帧透传。
+3. ESP32-S3运行三串口固定路由网关和本地 UMCA LLM节点固件。
+4. 建立 GD32、Sensor、Actuator三个串口域之间的帧路由，并接入MiMo HTTPS API。
 5. 验证断线、重连、粘包、拆包和缓存溢出。
 6. 进行连续运行和故障注入测试。
 7. 测量真实ROM、RAM、栈峰值、吞吐量和延迟。
@@ -771,23 +775,66 @@ Windows 端建议使用板载 GD-Link 的 CMSIS-DAP 接口，通过 OpenOCD 或 
 UMCA 帧互操作。烧录成功、NSH 可见和 UART 回显成功只能证明板级启动/串口链路，
 不能直接证明 UMCA 帧已通过 CRC、Sequence 和 Topic 路由验证。
 
+2026-09-09 起，硬件验证改为两阶段推进：第一阶段使用 Windows COM7 CH340 模拟
+ESP32 侧，完成 GD32↔Windows 的原始 UMCA 帧互通，覆盖 ANNOUNCE、HEARTBEAT、DATA、
+CRC、Sequence、半帧、粘包和断线恢复；第二阶段实现 Windows COM7↔TCP 字节透明网桥，
+验证 UART↔网络双向透传及 TCP 分包/粘包。网桥不得解析或修改 UMCA 帧，使用固定容量
+缓冲，断线期间不重放旧控制命令。该阶段计划在两阶段通过后替换为真实 ESP32 固件；
+替换和最终混合实物功能验收已于2026-09-18完成。
+
+第一阶段已于 2026-09-09 通过。完整测试增量为 `rx_frames=13`、`rx_crc_errors=1`、
+`rx_duplicates=1`、`rx_stale=1`、`rx_unsubscribed=6`、`rx_semantic_errors=0`、
+`node_online_events=1`、`node_offline_events=1`、`capacity_errors=0`；坏 CRC 负向用例使
+粘滞 `last_error` 保持为 `UMCA_ERR_CRC(-7)`，符合设计。新 Boot ID 建立新会话，停止
+心跳 15 秒后节点正常转为 OFFLINE。第二阶段 COM7↔TCP 实板验证基线已于
+2026-09-14 通过。
+
+同日，远端 Topic `used` 标志修复已通过 GD32 实机回归，`umca_node_get()` 逐字段
+复制修复已通过主机回归；第二阶段 COM7↔TCP 实测前置条件全部满足。
+
+第二阶段基线结果：TCP→UART `read=493, sent=493`；UART→TCP `read=245, sent=98,
+offline_drop=147`；连接/断开各 2 次，两个方向均无溢出，串口清理失败为 0。GD32
+接收 9 帧，未订阅 DATA 为 5，CRC、长度、语义、重复、陈旧和容量错误均为 0，最终
+正常离线且无 HardFault。固定缓冲溢出、非空缓冲断线清空和旧数据不重放专项随后
+通过，Windows 网桥阶段功能验收完成。当时后续工作中的真实 ESP32替换已于
+2026-09-18完成，长期连续运行仍作为独立可靠性项目。
+
+专项测试确认：断线时应用缓冲按约束清空，新连接不重放旧数据，缓冲溢出遵循“丢弃
+新数据并计数”。已经进入 UART 驱动、FIFO 或硬件移位寄存器的字节无法撤回，极小
+缓冲断线可能使 UMCA 接收端产生一次 CRC 错误并重新同步，属于预期硬件边界。Windows
+GBK 下中文测试输出的编码异常只影响日志显示，不影响网桥逻辑。
+
+Windows TCP 测试端的身份参数固定为 `source/dev_id=0x3300000000000001`；Boot ID 作为
+独立 32 位会话参数从 `0x33000001` 切换为 `0x33000002`，不得拼接进 DevID。
+
 首轮硬件接线固定为 GD32 PC10/UART3_TX→对端 RX、GD32 PC11/UART3_RX←对端 TX、
 GND↔GND。对端必须是 3.3 V TTL；不得直接连接 RS-232 电平或 5 V TTL。
 
-#### ESP32边界
+#### ESP32-S3最终边界（2026-09-14冻结）
 
-ESP32初版只负责：
+最终器件为 ESP32-S3-N16R8。UART0保留烧录和日志，UART1连接 GD32，UART2连接
+Actuator，RMT辅助软件UART连接低频 Sensor。ESP32负责：
 
-- UART字节流收发。
-- 完整UMCA帧识别或透明封装。
-- WiFi连接和远端传输。
-- 必要的缓冲与链路状态报告。
+- 三个串口入口的完整UMCA帧识别、CRC校验和固定容量队列。
+- 按静态 DevID出口表转发，TTL减1并重新计算 CRC，禁止发回入口。
+- 作为独立 UMCA节点处理 `/llm/chat/request`，通过 Wi-Fi/HTTPS调用MiMo API并发布
+  `/llm/chat/response`。
+- 网络、TLS和LLM任务与高优先级串口路由任务隔离。
+- 不重放旧 LLM请求或控制命令，所有缓冲和并发数有固定上限。
 
-ESP32不得承担Agent决策，也不得修改UMCA业务Payload语义。
+ESP32不得直接授权物理动作。LLM只返回有限 Action Proposal，GD32校验来源、Boot ID、
+request_id、动作白名单、参数范围和 Actuator在线状态后才发布 FanCommand。
+
+此前通过的 COM↔TCP纯字节透明测试保留为链路基线，不再代表最终 ESP32固件规格。
+Windows `umca_three_node_sim.py`可通过单一 COM模拟 ESP32、Sensor和Actuator，作为无
+实体网关时的回归工具。实体ESP32-S3固定路由、Wi-Fi/TLS和MiMo云端API已于
+2026-09-18完成验收；凭据仍不得写入仓库或固件源码。
 
 #### 退出条件
 
 - GD32与ESP32之间可稳定双向传输UMCA帧。
+- 三个串口域的单播、广播、TTL、CRC和禁止回送均通过验证。
+- LLM请求与响应按 `requester_boot_id + request_id`正确匹配。
 - WiFi断线不会导致GD32缓冲区无限增长。
 - CRC错误和半帧不会进入Topic回调。
 - 真实资源与延迟数据已记录。
@@ -1061,22 +1108,28 @@ umca-size-contest.txt
 8. 无LLM时存在可演示的本地规则路径。
 9. CRC、长度、版本、容量、重复帧和Topic碰撞均有测试。
 10. GD32目标具备可审查的交叉编译和资源报告。
-11. 硬件到位后完成UART和ESP32 WiFi透传验证。
+11. 完成UART实板基线、实体ESP32-S3路由和MiMo云端API验收；Sensor允许由Windows
+    串口模拟作为最终交付节点。
 12. README能够指导第三方复现构建、运行和演示。
 
 ---
 
 ## 17. 当前结论
 
-截至 2026-08-22，协议测试向量、平台无关 Core、POSIX 主机测试、Goldfish/openvela
-三节点闭环和 ai_agent Tool 的实际运行时接入均已完成当前 MVP 门禁。后续工作应转向：
+截至 2026-09-18，协议测试向量、平台无关 Core、POSIX 主机测试、Goldfish/openvela
+三节点闭环、ai_agent Tool运行时接入，以及最终混合实物业务闭环均已完成当前MVP门禁。
+最终闭环由实体GD32、实体ESP32-S3、实体Actuator和Windows串口Sensor组成。后续工作应
+转向：
 
 1. 固化可重复的 Goldfish 构建/启动脚本，并补齐通用 `umca` 生命周期诊断命令；
-2. 为 GD32/ESP32 目标完成交叉编译、Map 资源报告和 UART PHY 硬件验证；
+2. 归档实体ESP32-S3路由、MiMo云端API和Windows Sensor的可重复验收证据；
 3. 在硬件验证前保持分段、可靠传输、RPC、ACL、加密、网关和多路径等能力关闭。
 
 Goldfish 使用 Loopback PHY，仅证明三节点逻辑闭环和 openvela 任务模型；不得将模拟器
 资源数据外推为 GD32 结论。UMCA Core 仍保持不依赖 openvela、POSIX 或 ai_agent。
+2026-09-14的GD32业务验收使用Windows模拟三个远端角色，属于历史阶段；2026-09-18
+已由实体ESP32-S3和实体Actuator替换对应Mock，Sensor则正式保留为Windows串口模拟。
+真实MiMo云端API已完成验收。
 
 比赛期间，`contest2026_417_duwen/umca/`作为UMCA源码唯一真源；裸机、FreeRTOS和Arduino节点使用独立仓库，并在协议和Core稳定后开始开发。至少完成第二个平台互操作验证后，再决定是否将UMCA拆分为正式独立仓库。
 
@@ -1086,6 +1139,26 @@ Goldfish 使用 Loopback PHY，仅证明三节点逻辑闭环和 openvela 任务
 2. 关闭该功能后，其代码和静态资源是否真正消失？
 
 只有两者都满足，才能认为UMCA实现了“轻量级、可裁剪、跨平台”的设计目标。
+
+---
+
+## 18. 最终GD32功能冻结状态（2026-09-17）
+
+GD32最终Agent功能已实现、冻结并通过验收：
+
+1. `sensor_query`和`device_control`已通过真实`tool_registry` external provider API注册；
+2. `chat`在V1文本字段内注入`LlmChatRequest V1 Compact Context C1`可信快照；
+3. 非零LLM status明确计数并输出失败，不显示空成功回复、不执行动作；
+4. LLM动作经过Source、Boot ID、request_id、deadline和白名单校验后，再调用
+   `device_control`等待真实FanState；
+5. 新增默认关闭的`agent-auto on|off|status`，与本地auto互斥、容量1、60秒冷却；
+6. Windows Mock已严格解析C1并支持可信温度问答。
+
+已完成MINIMAL 3/3、DISCOVERY 5/5、CONTEST 5/5 CTest和Windows 14/14测试，Python
+语法检查及GD32完整交叉构建通过。最终镜像Flash 262,572 B、SRAM 17,668 B。最终固件
+Windows烧录、实体ESP32-S3 Provider、实体Actuator、Windows串口Sensor和MiMo云端API
+均已完成闭环验收。后续只补充长期运行和故障注入证据；除阻断性缺陷外，不再扩展GD32
+通用Tool Calling、多轮规划、动态Skill或新协议版本。
 
 ---
 
