@@ -74,10 +74,10 @@ if(BUILD_TESTING)
 
   add_executable(umca_demo_codec_tests
     tests/unit/test_demo_codec.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../app/openvela_umca_agent/demo/demo_codec.c)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../app/umca_demo/demo_codec.c)
   target_link_libraries(umca_demo_codec_tests PRIVATE umca_core)
   target_include_directories(umca_demo_codec_tests PRIVATE ${UMCA_INCLUDE}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../app/openvela_umca_agent/demo)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../app/umca_demo)
   target_compile_definitions(umca_demo_codec_tests PRIVATE ${UMCA_PROFILE_DEFINE})
   target_compile_options(umca_demo_codec_tests PRIVATE -Wall -Wextra -Wpedantic
     -Wconversion -Wsign-conversion -Wshadow -Wundef)
@@ -107,5 +107,28 @@ if(BUILD_TESTING)
       target_link_libraries(umca_host_three_nodes PRIVATE Threads::Threads)
     endif()
     add_test(NAME umca_host_three_nodes COMMAND umca_host_three_nodes)
+
+    add_executable(umca_gd32_agent_tests
+      tests/integration/test_gd32_agent.c
+      ${CMAKE_CURRENT_SOURCE_DIR}/../app/openvela_umca_gd32/umca_gd32_agent.c
+      ${CMAKE_CURRENT_SOURCE_DIR}/../app/openvela_umca_gd32/umca_ai_agent_registry.c
+      ${CMAKE_CURRENT_SOURCE_DIR}/../app/umca_demo/demo_codec.c)
+    target_link_libraries(umca_gd32_agent_tests PRIVATE umca_core
+      umca_phy_loopback)
+    target_include_directories(umca_gd32_agent_tests PRIVATE ${UMCA_INCLUDE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+      ${CMAKE_CURRENT_SOURCE_DIR}/phy/loopback
+      ${CMAKE_CURRENT_SOURCE_DIR}/../app/openvela_umca_gd32
+      ${CMAKE_CURRENT_SOURCE_DIR}/../app/umca_demo
+      ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/ai_agent/src
+      ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/ai_agent/include)
+    target_compile_definitions(umca_gd32_agent_tests PRIVATE
+      ${UMCA_PROFILE_DEFINE})
+    target_compile_options(umca_gd32_agent_tests PRIVATE -Wall -Wextra
+      -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wundef)
+    if(UMCA_PROFILE_UPPER STREQUAL "CONTEST")
+      target_link_libraries(umca_gd32_agent_tests PRIVATE Threads::Threads)
+    endif()
+    add_test(NAME umca_gd32_agent_tests COMMAND umca_gd32_agent_tests)
   endif()
 endif()
