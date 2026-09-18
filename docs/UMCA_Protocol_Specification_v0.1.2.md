@@ -523,6 +523,8 @@ int umca_topic_register(umca_context_t *ctx,
 | `/events/temperature/threshold` | `0x5389C486` | Virtual Sensor | Agent | [Demo] |
 | `/actuators/fan/command` | `0xC72FE51A` | Agent | Virtual Actuator | [Demo] |
 | `/actuators/fan/state` | `0x6D3F9EBE` | Virtual Actuator | Agent | [Demo] |
+| `/llm/chat/request` | `0x7985C52E` | GD32 Agent | ESP32-S3 | [Demo] |
+| `/llm/chat/response` | `0x9D3E1F72` | ESP32-S3 | GD32 Agent | [Demo] |
 
 ### 12.2 TemperatureSample
 
@@ -573,6 +575,40 @@ Topic：`/actuators/fan/state`
 | 6 | `applied_time_ms` | `u32` | 实际执行时间 |
 
 Payload 固定 10 字节。
+
+### 12.6 LlmChatRequest
+
+Topic：`/llm/chat/request`。使用普通 QoS-0 `DATA`，Destination为 ESP32 DevID。
+
+| 偏移 | 字段 | 类型 | 说明 |
+|------|------|------|------|
+| 0 | `requester_boot_id` | `u32` | 当前 GD32 Boot ID，非0 |
+| 4 | `request_id` | `u32` | GD32生成的非零编号 |
+| 8 | `timeout_ms` | `u32` | 请求预算，当前默认15000 |
+| 12 | `origin` | `u8` | 0串口终端，1自动事件 |
+| 13 | `text_length` | `u16` | 1~241 |
+| 15 | `text` | bytes | UTF-8字节，不含隐式终止符 |
+
+Payload为15~256字节。MVP不承诺传输层重试；`requester_boot_id + request_id`只提供应用
+响应关联和跨重启迟到响应拒绝。
+
+### 12.7 LlmChatResponse
+
+Topic：`/llm/chat/response`。使用普通 QoS-0 `DATA`，Destination为 GD32 DevID。
+
+| 偏移 | 字段 | 类型 | 说明 |
+|------|------|------|------|
+| 0 | `requester_boot_id` | `u32` | 原样返回请求值 |
+| 4 | `request_id` | `u32` | 原样返回请求值 |
+| 8 | `status` | `u8` | 0成功、1拒绝、2不可用、3超时、4错误 |
+| 9 | `action_type` | `u8` | 0无动作、1设置风扇 |
+| 10 | `action_value` | `u8` | 0关、1开；无动作时必须为0 |
+| 11 | `text_length` | `u16` | 0~243 |
+| 13 | `text` | bytes | UTF-8字节，不含隐式终止符 |
+
+ESP32把MiMo输出约束为文本和有限动作提议。GD32必须再次校验 ESP32 Source DevID、
+Boot ID、request_id、状态、动作白名单、参数范围和 Actuator在线状态，再生成独立的
+FanCommand；LLM响应本身不得直接驱动物理输出。
 
 ---
 
@@ -753,12 +789,29 @@ typedef struct {
 - **[MVP]** 使用固定深度队列。
 - **[MVP]** 支持测试注入 CRC 错误、丢帧和重复帧。
 
-**[未实现]** UART 实板硬件验证。
+**[阶段一验收完成]** 2026-09-09 已在 GD32F470VKT6 实板上完成 UART3（PC10/PC11）与
+Windows COM7 CH340 的双向 UMCA 互操作，覆盖 ANNOUNCE、HEARTBEAT、DATA、CRC32C、
+帧长度、协议语义、节点上线、Sequence、17+32 字节半帧、双帧粘包、COM 关闭重开、
+新 Boot ID 会话及 15 秒离线转换。基础冒烟测试错误码为 0 且无 HardFault；完整负向
+测试结束后的粘滞错误为预期的 `UMCA_ERR_CRC(-7)`。
 
-2026-09-06 起，UART PHY 的协议无关字节流组帧适配器已完成主机测试；“UART 硬件
-验证”仍特指 GD32F470VKT6 实板上的真实串口电平、线缆、对端和连续运行验证，不能以
-主机测试或 Goldfish Loopback 结果替代。Linux/Windows 工具链分工不属于线级协议：
-Linux 生成固件，Windows 执行烧录和调试。
+2026-09-06起，UART PHY的协议无关字节流组帧适配器已完成主机测试；COM↔TCP透明
+网桥功能验收已完成。2026-09-18又完成实体ESP32-S3对端、实体Actuator及Windows
+串口Sensor组成的最终混合实物互操作，MiMo云端API同时通过验收。长期连续运行仍属于
+独立可靠性测试，不改变线级协议结论。
+Linux/Windows 工具链分工不属于线级协议：Linux 生成固件，Windows 执行烧录和调试。
+
+阶段一完整测试统计为 `rx_frames=13`、`rx_crc_errors=1`、`rx_duplicates=1`、
+`rx_stale=1`、`rx_unsubscribed=6`、`rx_semantic_errors=0`、`node_online_events=1`、
+`node_offline_events=1`、`capacity_errors=0`。这些值同时证明坏 CRC 不提交 Sequence、
+重复/陈旧帧被拒绝，以及新 Boot ID 后的会话与离线状态转换生效。
+
+**[阶段二功能验收完成]** 2026-09-14 已通过 Windows COM7↔TCP 纯字节透明网桥验证：
+TCP 分片与粘包经 UART 后仍形成 9 个合法 UMCA 帧，TCP→UART 493 字节无损；断线窗口
+内 UART 输入 147 字节被丢弃，重连后没有旧数据重放。两次 TCP 接收均无无效帧或废弃
+字节，GD32 协议错误统计均为 0。固定缓冲溢出及非空缓冲断线清空专项测试随后通过。
+断线无法撤回已进入 UART 物理发送过程的字节，极端情况下形成的残帧允许由接收端
+通过 Magic 与 CRC 丢弃并重新同步；这不改变网桥不得解析 UMCA 帧的约束。
 
 GD32 MVP 物理 Profile 固定为 UART3、PC10/TX、PC11/RX、AF8、115200 8N1、3.3 V
 CMOS TTL、共地、无 RTS/CTS；NuttX 设备为 `/dev/ttyS1`。USART0/PB6/PB7
@@ -913,6 +966,8 @@ CRC32C：0xE3069283
 | `/events/temperature/threshold` | `0x5389C486` |
 | `/actuators/fan/command` | `0xC72FE51A` |
 | `/actuators/fan/state` | `0x6D3F9EBE` |
+| `/llm/chat/request` | `0x7985C52E` |
+| `/llm/chat/response` | `0x9D3E1F72` |
 
 ### 20.3 空Payload DATA帧
 
@@ -1052,7 +1107,8 @@ c8 c2 08 2a
 - **[未实现]** ACK、ACK_REQUIRED和ERROR消息。
 - **[未实现]** ParameterService。
 - **[未实现]** Broker模式。
-- **[未实现]** 网关和跨域路由。
+- **[Core未实现]** 通用动态网关和跨域路由。比赛应用另行定义 ESP32-S3固定静态
+  三端口网关，不将该能力宣称为 Core通用路由。
 - **[未实现]** 透明桥接。
 - **[未实现]** 多路径和Channel Bonding。
 - **[未实现]** QoS-1、QoS-2、QoS-3策略。
@@ -1079,6 +1135,22 @@ c8 c2 08 2a
 11. 节点更换`boot_id`后能够立即建立新会话并接收新的Sequence。
 12. CRC、Topic和完整帧编码结果与第20节固定向量逐字节一致。
 13. 非零Flags、非零QoS和未实现消息类型不会进入Topic回调。
+
+---
+
+## 24. LlmChatRequest V1 Compact Context C1（应用层说明）
+
+GD32应用可在既有V1 `text`字段中使用以下确定性文本：
+
+```text
+C1;tv=1;t=<int32>;age=<uint32>;q=<uint8>;so=<0|1>;ao=<0|1>;f=<0|1|2>\nQ:<UTF-8>
+C1;tv=0;so=<0|1>;ao=<0|1>;f=<0|1|2>\nQ:<UTF-8>
+```
+
+C1不改变本规范的帧头、Topic、Payload字段、编码或241字节上限，也不增加协议版本。
+它仅是Demo应用对V1文本内容的约定。`tv=0`必须省略`t/age/q`；当前温度Sample定义中
+`quality=1`有效、`quality=0`无效。具体输入校验、MiMo system prompt和动作授权见
+`UMCA_Software_Design_v0.1.2.md`与`UMCA_Node_Integration_Guide.md`。
 
 ---
 

@@ -150,6 +150,12 @@ PAL 是贯穿核心协议栈与平台实现的横切抽象，不属于某一种�
 - CAN FD、UDP 等报文型 PHY 应保持单个底层报文与单个 UMCA 帧的边界对应；当帧超过 MTU 时由传输层处理分段，MVP 不支持此能力。
 - PHY 驱动可在中断中接收底层数据，但不得在中断上下文直接执行 Topic 回调；应先写入固定队列，再由协议任务调用 `poll()` 取出。
 - PHY采用`ops + driver`实例描述符；相同操作表可以绑定多个独立driver，Core不得依赖Adapter内部的可变全局状态。
+- UART↔TCP/无线透明网桥属于 PHY 外部承载，不解析或修改 UMCA 帧。网桥使用固定容量
+  双向缓冲；TCP 断线时销毁旧连接并清空应用缓冲，断线期间持续读取并丢弃 UART 输入，
+  重连后只转发新字节。控制命令去重仍由端点的 Sequence、Boot ID 和 request_id 负责。
+- 上述纯透明模式是已验证的链路测试 Profile，不是最终 ESP32-S3 产品角色。最终比赛
+  拓扑由 ESP32-S3-N16R8 连接 GD32、Sensor 和 Actuator 三条独立串口；网关验证帧、
+  按 Destination 选择出口、转发时递减 TTL 并重算 CRC，同时本地处理 LLM Chat Topic。
 
 #### 4.1.3 支持的物理层类型
 
@@ -799,7 +805,7 @@ MVP能力固定为QoS-0。收到QoS-1~3帧时必须拒绝，不得解析后降�
 | 每节点宣告 Topic | `UMCA_MAX_TOPICS_PER_NODE=8` |
 | 默认收发队列 | RX 4 帧、TX 4 帧，编译期可调 |
 | PAL | `ops + user + mutex`注入；首期支持openvela、POSIX/Linux |
-| PHY | `ops + driver`多实例；Loopback实现；GD32 UART3 接口已冻结并待实板验证 |
+| PHY | `ops + driver`多实例；Loopback实现；GD32 UART3 实板双向互操作已通过基础验收 |
 | 服务发现 | ANNOUNCE、HEARTBEAT、TEARDOWN |
 | Flags | 固定为0；ACK和ERROR不实现 |
 | QoS | 固定为0；其他值拒绝，不静默降级 |
@@ -820,11 +826,11 @@ MVP能力固定为QoS-0。收到QoS-1~3帧时必须拒绝，不得解析后降�
 8. 同一DevID更换Boot ID后可立即建立新会话并接受新的Sequence。
 9. CRC、Topic ID和完整帧编码与协议固定测试向量逐字节一致。
 
-### 14.1 实现同步记录（2026-08-22）
+### 14.1 实现同步记录（更新至2026-09-18）
 
 截至本日期，MVP约束已在比赛仓 `umca/` 中落地，并完成 POSIX 主机验证。Goldfish
-验证使用 openvela PAL 与 Loopback PHY；因此该结果证明的是协议、PAL 和三节点应用
-在模拟环境中的闭环，不代表 UART、GD32 或 ESP32 硬件已经互操作。
+验证使用 openvela PAL 与 Loopback PHY；最终硬件验收使用实体GD32、实体ESP32-S3、
+实体Actuator和Windows串口Sensor，并已完成MiMo云端API闭环。
 
 | 能力 | 状态 | 证据/边界 |
 |------|------|-----------|
@@ -832,7 +838,7 @@ MVP能力固定为QoS-0。收到QoS-1~3帧时必须拒绝，不得解析后降�
 | 服务发现与多实例 Loopback | 已完成 | Sensor、Agent、Actuator 三个 Context 完成 ANNOUNCE/HEARTBEAT/DATA |
 | Goldfish 三节点闭环 | 已完成 | 温度发布 → 阈值事件 → FanCommand → FanState ACK |
 | ai_agent Tool 运行时接入 | 已完成 | app-level provider 注册 `sensor_query`、`device_control` |
-| UART/GD32/ESP32 | 接口冻结，硬件未验证 | UART3 PC10/TX、PC11/RX、AF8、115200 8N1、`/dev/ttyS1`；等待实板与对端互操作 |
+| UART/GD32/ESP32 | 最终混合实物拓扑验收通过 | UART3 PC10/TX、PC11/RX、AF8、115200 8N1、`/dev/ttyS1`；实体ESP32-S3路由、实体Actuator、Windows串口Sensor及MiMo API闭环均通过 |
 
 2026-09-06 硬件阶段已确认目标板为 GD32F470V-START，MCU 为 GD32F470VKT6。NSH
 保留 USART0/PB6/PB7 `/dev/ttyS0`，UMCA 分配 UART3/PC10/PC11 AF8
@@ -840,14 +846,77 @@ MVP能力固定为QoS-0。收到QoS-1~3帧时必须拒绝，不得解析后降�
 与 SDIO 数据 2/3 复用，因此本基线禁用 SDIO。正确原理图确认 PA9 接入 USB VBUS
 检测网络、PD2 经 470 Ω 电阻接入 USB 电源控制网络，旧引脚方案已废止。UART 字节流
 Adapter 已完成主机
-分片/粘包测试，但尚未完成实板烧录和串口互操作。Linux 负责交叉编译，Windows 负责
+分片/粘包测试；2026-09-09 已完成实板烧录和 GD32 UART3 阶段一双向串口互操作验收，
+包括 ANNOUNCE、HEARTBEAT、DATA、CRC32C、Sequence、半帧、粘包、COM 重开、新 Boot ID
+和离线转换。基础冒烟测试错误码为 0 且无 HardFault，负向 CRC 测试结束后的粘滞错误
+为预期的 `UMCA_ERR_CRC(-7)`。Linux 负责交叉编译，Windows 负责
 GD-Link/CMSIS-DAP 烧录与 GDB 调试；`.vscode/` 不属于构建或验证输入。
+
+2026-09-14，COM7↔TCP 第二阶段基线实测通过。TCP→UART 493 字节全部发送，GD32 接收
+9 帧且 CRC、长度、语义、重复、陈旧和容量错误均为 0；UART→TCP 读取 245 字节，其中
+98 字节在连接期间转发，147 字节在断线期间按约束丢弃。两次 TCP 解码均无无效帧或
+废弃字节，连接/断开各 2 次，无缓冲溢出、串口清理失败或 HardFault。
+
+随后完成固定缓冲溢出及非空缓冲断线清空专项测试，未发现其他已确认的正式网桥代码
+问题。极小缓冲断线时，已经进入 UART 驱动、FIFO 或硬件移位寄存器的字节无法撤回，
+对端可能收到残帧并记录一次 CRC 错误；该现象属于已冻结的物理发送边界，接收端按
+Magic 与 CRC 重新同步。Windows GBK 环境下测试脚本的中文输出可能显示异常，仅影响
+日志呈现，不影响字节透明转发。
+
+### 14.2 ESP32-S3 汇聚拓扑冻结（2026-09-14）
+
+最终演示拓扑采用 ESP32-S3-N16R8 作为固定星形中心。GD32和Actuator为实体串口叶节点；
+Sensor是由Windows进程通过USB-UART承载的逻辑叶节点。ESP32使用Wi-Fi/HTTPS调用
+MiMo API：
+
+```text
+Windows Sensor -- USB-UART --+
+                             |
+实体Actuator ------ UART ----+-- 实体ESP32-S3 -- UART -- 实体GD32 Agent
+                             |
+                             +-- Wi-Fi/HTTPS -- MiMo API
+```
+
+ESP32既是拥有 DevID `0x3300000000000001`的 LLM应用节点，也是三个串口域之间的固定
+路由器。它只解析发往自身的 `/llm/chat/request` Payload；转发其他业务帧时保持 Source、
+Destination、Topic、Sequence和 Payload不变，只按协议递减 TTL并重新计算 CRC。
+
+GD32仍是控制授权点。LLM只能返回有限动作提议，GD32检查请求会话、动作白名单、节点
+在线状态并等待 Actuator确认后，才能报告物理动作成功。ESP32网络或 LLM任务失效时，
+串口路由任务必须继续运行；GD32本地温度规则不依赖云端。
+
+Windows早期阶段通过单一COM端口模拟ESP32、Sensor和Actuator三个逻辑DevID，验证
+GD32所见的聚合链路。最终验收已经替换为实体ESP32-S3和实体Actuator，仅Sensor继续
+由Windows串口模拟；Sensor的逻辑身份和协议契约不因宿主变化而改变。详细接口见
+`UMCA_Node_Integration_Guide.md`。
+
+### 14.3 最终混合实物验收（2026-09-18）
+
+最终GD32固件已完成Windows端烧录和功能回归。实体ESP32-S3完成固定出口路由并作为
+LLM应用节点调用真实MiMo云端API，实体Actuator完成FanCommand/FanState确认；Windows
+Sensor按固定DevID发布温度和阈值事件。Discovery、可信温度查询、手动/自动风扇控制、
+C1 Chat、MiMo响应关联、有限动作授权和执行反馈闭环均通过。
+
+该拓扑是比赛最终交付配置，不再要求另行制作实体Sensor。Windows三节点Mock仍保留为
+无硬件回归工具，但不用于描述最终硬件组成。长期压力、断电重启和网络故障注入继续
+作为可靠性验证项，不改变当前功能验收结论。
 
 Demo 集成层允许弱引用 ai_agent provider，使 UMCA 三节点服务在没有 ai_agent
 应用时仍可独立链接；当 `packages/ai_agent` 被加入同一 NuttX 镜像后，适配层调用
 实际的 `tool_registry_register_provider("umca", ...)`，随后调用
 `tool_registry_invalidate()` 刷新工具缓存。该依赖属于 openvela app 集成层，不得
 回流到 UMCA Core。
+
+GD32最终固件采用同一真实external provider API契约，但不链接完整Registry及其内置
+工具、cJSON、网络和TLS依赖。应用内的external-provider-only静态后端负责
+`tool_registry_register_provider()`和`tool_registry_execute()`，实际注册
+`sensor_query`与`device_control`。这不是另一套Agent框架，适配边界只存在于GD32应用
+层，UMCA Core及线级协议均不感知Tool。
+
+GD32发送到ESP32的`LlmChatRequest V1`保持原Payload，在text字段内部使用应用约定
+“Compact Context C1”携带请求创建时可信温度快照。C1不构成线级V2。MiMo只能提出
+`none`或`set_fan`建议；最终FanCommand仍由GD32授权并等待FanState确认。默认关闭的
+agent-auto只在有效温度阈值跨越时评估，与本地auto互斥且受60秒冷却限制。
 
 Goldfish 运行时可通过以下 NSH 命令核对接入结果：
 

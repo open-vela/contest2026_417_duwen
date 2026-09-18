@@ -1,0 +1,35 @@
+# openvela/NuttX构建输出（比赛仓库只保留源码、文档和日志）
+/build/
+/cmake_out/
+/nuttx/nuttx
+/nuttx/nuttx.bin
+/nuttx/nuttx.hex
+/nuttx/nuttx.map
+/nuttx/.config
+/nuttx/Make.defs
+/nuttx/include/nuttx/config.h
+
+# 本地调试和编辑器生成文件
+.vscode/*.user.json
+.vscode/.ropeproject/
+*.swp
+*.swo
+*~
+
+# Python缓存和测试临时文件
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# 本地硬件采集、临时固件和编辑备份
+/bin.bin
+/log.csv
+/scripts/windows/*.bak-*
+
+# 只提交最终节点SDK归档，历史中间版本保留在本地
+/dist/*.tar.gz
+/dist/*.zip
+!/dist/umca-node-sdk-v0.1.2-20260918.tar.gz
+!/dist/umca-node-sdk-v0.1.2-20260918.zip
+
+# 不忽略 logs/：比赛要求的 AI Coding 日志必须保留

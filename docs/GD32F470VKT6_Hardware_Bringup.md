@@ -137,10 +137,9 @@ SPI5、ENET、EXMC/外部 RAM、TLI、DCI、USB FS/HS 和 TRNG。
 因此本板固定使用 `configure.sh + make`。该限制属于当前 openvela 构建树，不是 UMCA
 Core 或 UART PHY 错误。
 
-2026-09-08 Linux 实际构建结果：切换到 UART3 并完成原理图修正后，固件 Flash
-244,640 B、SRAM 15,920 B。相对 2026-09-06 的原 UART4 版本（244,648 B），Flash
-减少 8 B，
-SRAM 不变。ELF 已确认包含 `umca_gd32_main`、`umca_uart_phy`、
+2026-09-09 Linux 实际构建结果：完成 UART3 实测及远端 Topic 状态修复后，固件 Flash
+244,656 B、SRAM 15,920 B。相对 2026-09-08 的初始 UART3 版本（244,640 B），Flash
+增加 16 B，SRAM 不变。ELF 已确认包含 `umca_gd32_main`、`umca_uart_phy`、
 `umca_openvela_uart_open` 和 `umca_discovery_send_announce`。
 
 干净构建还暴露出 NuttX `drivers_initialize.c` 在网络关闭时无条件包含 usrsock RPMsg
@@ -204,13 +203,43 @@ continue
 适配器搜索 UMCA Magic `0x55 0x4D`，读取固定 36 字节帧头和 Payload 长度，收齐完整
 帧后才交付 UMCA Core；CRC、Version、Flags、QoS 和消息语义仍由 Core 校验。
 
-当前已完成主机测试和 UART3 固件配置，尚未完成 GD32 实板 UART 互操作。Windows
-端烧录后建议依次执行：
+2026-09-09 已完成 GD32 实板 UART3 双向互操作验收。PC10/PC11、COM7 CH340 收发、
+ANNOUNCE、HEARTBEAT、CRC32C、帧长度、协议语义、节点上线和 Sequence 处理均通过，
+错误码为 0，未出现 HardFault。Windows 端烧录后仍可按以下命令复核：
+
+扩展阶段一测试随后验证了半帧、粘包、坏 CRC 后复用同一 Sequence、重复/陈旧
+Sequence 和 COM 关闭重开。GD32 统计与预期完全一致：`rx_frames=13`、
+`rx_crc_errors=1`、`rx_duplicates=1`、`rx_stale=1`、`rx_unsubscribed=6`、
+`rx_semantic_errors=0`、`node_online_events=1`、`node_offline_events=1`、
+`capacity_errors=0`；负向 CRC 用例后的粘滞错误为 `UMCA_ERR_CRC(-7)`。新 Boot ID
+会话建立并在 15 秒无心跳后正常转为 OFFLINE，阶段一正式通过。
+
+上述阶段一统计来自修复远端 Topic `used` 标志之前的固件。包含该修复及
+`umca_node_get()` 逐字段复制修复的新构件随后已在 Windows 端重烧，GD32 实机确认远端
+Topic 的 `used` 字段为 `true` 且无 HardFault。第二阶段 COM↔TCP 实测可以开始。
+
+2026-09-14 第二阶段 COM7↔TCP 基线实测通过。GD32 接收 9 帧、5 个 DATA 进入未订阅
+路由，CRC、长度、语义、重复、陈旧和容量错误均为 0，`last_error=0`。网桥完成
+TCP→UART 493/493 字节以及 UART→TCP 98 字节转发，断线期间按约束丢弃 147 字节；
+连接/断开各 2 次，无溢出、串口清理失败或 HardFault。远端节点最终正常 OFFLINE。
+
+固定缓冲溢出及非空缓冲断线清空专项测试随后通过，未发现其他已确认的正式网桥代码
+问题。极小缓冲断线时已进入 UART 硬件移位寄存器的字节无法撤回，可能造成一次 CRC
+错误；该结果符合透明网桥物理边界，UMCA 接收端通过 Magic 与 CRC 重新同步。Windows
+GBK 下中文输出异常只影响测试日志显示。
 
 ```text
 umca_gd32 pinout
 umca_gd32 start 0x4700000000000001 1
 umca_gd32 status
+umca_gd32 nodes
+umca_gd32 topics
+umca_gd32 stats
+umca_gd32 query
+umca_gd32 control on
+umca_gd32 control off
+umca_gd32 auto on
+umca_gd32 chat turn fan on
 ```
 
 第一条命令应显示 USART0/PB6/PB7 与 UART3/PC10/PC11 的冻结定义；第二条命令默认
@@ -222,5 +251,56 @@ umca_gd32 start /dev/ttyS1 0x4700000000000001 1
 
 实板验收顺序为：确认 `/dev/ttyS0` NSH 日志、确认 `/dev/ttyS1` 存在、UART3
 双向字节收发、合法 UMCA 帧通过 CRC/Sequence/Topic 校验、错误帧被拒绝、最后进行
-GD32↔ESP32 连续运行。GD32 的业务角色仍由后续应用配置决定，不影响本次 UART
-物理接口冻结。
+GD32↔ESP32 连续运行。
+
+2026-09-14，GD32已从 Discovery外壳扩展为完整 Agent：订阅温度、阈值、风扇状态和
+LLM响应，发布风扇命令和 LLM请求；NSH命令通过固定 semaphore邮箱交给唯一协议任务。
+Linux Make构建成功，Flash区域256,080 B，SRAM区域17,384 B，`size`为 text 254,911 B、
+data 1,168 B、bss 16,216 B。Windows烧录后已使用 `umca_three_node_sim.py`完成业务
+实测：Discovery、温度查询、风扇手动控制、自动控制、LLM Mock请求/响应和动作执行均
+通过。测试开始时服务已经运行，`start`返回 `UMCA GD32 service is already running`，
+所以统计是服务运行期间累计值而非本轮清零值；关键错误计数均为0。该历史阶段结果不
+覆盖真实ESP32三串口、Wi-Fi/TLS或MiMo Provider；这些项目已于2026-09-18在最终混合
+实物拓扑中通过验收。
+
+最终 ESP32型号为 ESP32-S3-N16R8，作为连接 GD32、Sensor和Actuator三条串口的固定
+路由网关并调用MiMo API。GD32侧引脚保持 UART3 PC10/PC11不变；ESP32及其他节点接口
+见 `UMCA_Node_Integration_Guide.md`。
+
+## 6. 最终Agent固件复现与验收（2026-09-18）
+
+Linux编译：
+
+```bash
+cd /home/duwen/openvela-contest/contest2026_417_duwen
+BUILD_JOBS=4 ./scripts/build_gd32_umca.sh
+```
+
+本次结果为Flash 262,572 B、SRAM 17,668 B。最终固件已完成Windows端烧录，并在实体
+GD32、实体ESP32-S3、实体Actuator和Windows串口Sensor组成的拓扑中通过功能验收。
+从NSH可按以下命令复核：
+
+```text
+umca_gd32 start 0x4700000000000001 1
+umca_gd32 query
+umca_gd32 chat 当前温度是多少？
+umca_gd32 chat turn fan on
+umca_gd32 auto off
+umca_gd32 agent-auto on
+umca_gd32 agent-auto status
+umca_gd32 stats
+umca_gd32 agent-auto off
+umca_gd32 auto on
+```
+
+无实体ESP32/Actuator时，历史Windows三节点Mock仍可用于回归：
+
+```powershell
+py scripts\windows\umca_three_node_sim.py --port COM7 --baud 115200 `
+  --evidence gd32-final-agent.jsonl
+```
+
+最终验收已观察到Windows Sensor数据、实体ESP32 Discovery与路由、C1温度答复、真实
+MiMo云端响应、`skill=sensor_query`、`skill=device_control ... confirmed`及实体Actuator
+FanState确认。非零LLM status不得执行动作，agent-auto仍遵守互斥和冷却规则。终止后
+执行`umca_gd32 stop`，确认服务可正常退出；长期压力与故障注入数据单独归档。

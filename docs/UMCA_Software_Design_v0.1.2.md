@@ -627,6 +627,11 @@ typedef struct {
 
 计数溢出允许无符号自然回绕。Stats关闭时整个结构和更新代码不得存在。
 
+`node_online_events` 的 MVP 统计口径与 ANNOUNCE 状态提交绑定：合法 ANNOUNCE 使节点
+从 UNKNOWN、STALE 或 OFFLINE 进入 ONLINE 时递增；节点已经 ONLINE 时，仅更换 Boot ID
+并建立新会话不会重复计数。2026-09-14 网桥基线在首轮观察和断线期间累计超过 10 秒，
+旧会话先进入 STALE，故重连 ANNOUNCE 与首次 ANNOUNCE 各计一次，总数为 2。
+
 ### 8.8 Context
 
 MVP采用公共头文件可确定大小的调用者持有结构，避免不透明对象带来的动态分配或复杂存储对齐。
@@ -1322,6 +1327,26 @@ UMCA UART PHY 使用独立字节流适配器，组帧规则为搜索 UMCA `0x55 
 调用 Core。默认 NSH 命令为 `umca_gd32 start <dev-id> <boot-id>`，也允许在诊断时以
 四参数形式覆盖设备路径。`umca_gd32 pinout` 用于在实板端核对编译进固件的接口定义。
 GD32 的业务角色与对端类型仍由应用部署决定，不改变已冻结的 UART 物理接口。
+
+真实 ESP32 接入前使用 Windows CH340 分两阶段验证。第一阶段由串口测试端生成和解析
+UMCA 帧，覆盖 ANNOUNCE、HEARTBEAT、DATA、CRC、Sequence、半帧、粘包和断线恢复。
+第二阶段的 COM↔TCP 网桥与测试端分离：网桥只复制字节，不包含 UMCA Codec，也不检查
+消息类型或 Topic。两个方向使用启动时确定的固定容量缓冲；溢出时丢弃新字节并累计
+次数和字节数。TCP 断线后先撤销当前连接代次、销毁旧 Socket、关闭并清空双向应用
+缓冲，再对 UART FIFO 做 best-effort 清理；断线期间 UART 输入持续读取并直接丢弃。
+重连只创建新连接代次和新缓冲，不恢复旧数据。已经进入 UART 物理发送过程的字节无法
+撤回，控制命令的最终重复防护由 Sequence、Boot ID 和 request_id 承担。
+
+2026-09-09 第一阶段实板测试通过。完整测试统计为 `rx_frames=13`、
+`rx_crc_errors=1`、`rx_duplicates=1`、`rx_stale=1`、`rx_unsubscribed=6`、
+`rx_semantic_errors=0`、`node_online_events=1`、`node_offline_events=1`、
+`capacity_errors=0`；坏 CRC 用例后的 `last_error=UMCA_ERR_CRC(-7)` 是粘滞诊断值。
+第二阶段 COM7↔TCP 透明网桥基线已于 2026-09-14 通过 Windows 实际运行验证：
+TCP→UART 493 字节全部送达，UART→TCP 在连接期间转发 98 字节并在断线期间丢弃
+147 字节；两次 TCP 接收均无解码错误或废弃字节。缓冲溢出和非空队列断线清空专项
+故障注入随后通过，未发现其他已确认的正式网桥代码问题。极小缓冲断线可能留下已经
+进入 UART 物理发送过程的尾部字节，接收端出现一次 CRC 错误并重新同步是预期边界。
+Windows GBK 下中文测试输出编码异常不影响透明转发逻辑。
 
 本阶段不修改 `.vscode/`，也不依赖任何 IDE 任务或用户目录配置。
 
@@ -2054,7 +2079,7 @@ Linux Agent实现时应始终遵守：
 | Tool 适配 | `adapter/umca_agent_adapter.c`，注册 `umca` provider 并刷新工具缓存 |
 | 运行入口 | `umca_agent_main`，支持 `tools`, `sensor_query`, `device_control on|off` |
 
-验证结论：主机 CTest 3/3 通过；Goldfish 日志出现 `sensor temperature`、
+验证结论：主机 CTest 4/4 通过；Goldfish 日志出现 `sensor temperature`、
 `threshold event`、`actuator applied ... publish=0` 和 `agent control result={"ok":true...}`；
 ai_agent Tool 实际返回 `sensor_query` 温度缓存及 `device_control` 的 `request_id/state`。
 QuickApp 缺失 LFS 库和宿主 `libpulse.so.0` 是环境准备问题，不是 UMCA 运行时失败。
@@ -2069,15 +2094,122 @@ QuickApp 缺失 LFS 库和宿主 `libpulse.so.0` 是环境准备问题，不是 
 - 发送端短写循环；
 - 无数据轮询不阻塞。
 
-该适配器已经完成主机验证，但尚未连接 GD32 实板。硬件接口现已确定为 UART3、
-PC10/TX、PC11/RX、AF8、115200 8N1、3.3 V TTL 和 `/dev/ttyS1`；实板验证仍需
-串口对端和 Windows 端烧录调试记录。USART0/PB6/PB7 `/dev/ttyS0` 保持为 NSH，
+该适配器已经完成主机验证。2026-09-09 已完成 GD32 实板 UART3 阶段一双向互操作：
+PC10/PC11、COM7 CH340 收发、ANNOUNCE、HEARTBEAT、DATA、CRC32C、帧长度、协议语义、
+节点上线、Sequence、半帧、粘包和串口重开均通过。基础冒烟测试错误码为 0 且无
+HardFault；负向 CRC 测试后的粘滞错误为预期的 `-7`。硬件接口为 UART3、PC10/TX、
+PC11/RX、AF8、115200 8N1、3.3 V TTL 和 `/dev/ttyS1`；COM↔TCP 功能验收已完成。
+该阶段尚未覆盖的真实 GD32↔ESP32硬件互操作已于2026-09-18通过最终验收，连续运行
+仍作为独立可靠性项目。
+USART0/PB6/PB7 `/dev/ttyS0` 保持为 NSH，
 SDIO 因 PC10/PC11 复用冲突而保持关闭。
 
-Linux 当前配置的资源结果为：2026-09-08 切换 UART3 并重新全量链接后，
-`umca_gd32` 固件 Flash 244,640 B、SRAM 15,920 B。历史最小 NSH 基线为
+Linux 当前配置的资源结果为：2026-09-09 完成远端 Topic 状态修复并重新全量链接后，
+`umca_gd32` 固件 Flash 244,656 B、SRAM 15,920 B。2026-09-08 初始 UART3 构件的
+Flash 244,640 B 为历史对照；历史最小 NSH 基线为
 Flash 230,004 B、SRAM 6,700 B。
 ELF 已包含应用入口、UART PHY、openvela UART 桥接和 Discovery ANNOUNCE 符号。
+
+## 33. GD32 Agent与ESP32-S3网关同步（2026-09-14）
+
+GD32应用新增独立 `umca_gd32_agent`业务模块，在启动 ANNOUNCE前注册温度、阈值、风扇
+命令/状态和 LLM请求/响应六个 Topic。模块维护固定温度缓存、1000 ms FanState请求、
+15000 ms LLM请求、动作白名单和本地阈值规则，不使用动态内存。
+
+NSH命令 `query`、`control on|off`、`auto on|off`、`chat <text>`、`nodes`、`topics`、
+`stats`和`status`通过单槽 semaphore邮箱交给唯一协议任务。NSH任务不得直接访问或
+调用 UMCA Context，避免 Discovery Profile在多任务间发生未加锁并发。
+
+LLM交互使用两个 QoS-0 DATA Topic，不启用 MVP拒绝的 REQUEST/RESPONSE消息类型。
+请求关联键为 `requester_boot_id + request_id`；响应可携带的动作只有无动作或设置风扇
+开关。GD32再次验证 ESP32 Source、会话、动作和 Actuator在线状态，再发布独立
+FanCommand并等待真实 FanState。
+
+最终物理结构为 ESP32-S3-N16R8三端口固定星形网关。通用多 PHY路由仍不进入 UMCA
+Core；ESP32应用层网关按静态 DevID出口表完成帧验证、TTL递减和 CRC重算。详细线级、
+引脚与节点要求见 `UMCA_Node_Integration_Guide.md`。
+
+Linux Make交叉构建结果为 Flash区域256,080 B，SRAM区域17,384 B；`size`为
+text 254,911 B、data 1,168 B、bss 16,216 B。主机新增四逻辑节点 Agent集成测试，
+当前 MINIMAL CTest 3/3、DISCOVERY CTest 5/5、CONTEST CTest 5/5通过；Windows工具
+测试14/14通过。
+
+GD32构件随后已通过 Windows单串口三逻辑节点实板业务验收，覆盖 Discovery、温度
+查询、手动/自动风扇控制、LLM Mock请求/响应关联和动作执行。测试沿用已运行服务，统计
+是运行期间累计值而非本轮清零值，但关键错误计数均为0。该阶段验收未覆盖真实 ESP32
+三串口调度、Wi-Fi/TLS或MiMo Provider；这些项目已于2026-09-18在最终混合实物拓扑中
+通过验收。
+
+---
+
+## 34. GD32最终Agent集成（2026-09-17）
+
+GD32通过openvela `ai_agent`的真实external provider API注册并执行两个工具：
+
+```c
+tool_registry_register_provider("umca", umca_tools_json, umca_tool_execute);
+tool_registry_execute("sensor_query", "{}", output, output_size);
+tool_registry_execute("device_control", input_json, output, output_size);
+```
+
+API定义位于`packages/ai_agent/src/tools/tool_registry.h`。完整Registry会引入全部内置工具、
+cJSON、网络和TLS依赖，不适用于当前MCU镜像，因此GD32链接
+`app/openvela_umca_gd32/umca_ai_agent_registry.c`提供的external-provider-only后端。
+它保持相同注册和执行接口，只允许一个静态provider、不构建工具JSON、不引入通用Agent
+框架。公共头已移除不必要的`agent_compat.h`传递依赖，使接口可被轻量调用方独立包含。
+
+`sensor_query`从GD32单所有者协议任务中的温度缓存复制请求创建时快照。当前Demo
+`quality=1`表示有效，`quality=0`表示无效；只有Sensor在线、质量有效且年龄不超过
+5000 ms时才返回`available=true`和温度。离线、质量错误或过期结果不包含温度数值。
+
+`device_control`只接受精确JSON `fan/on`或`fan/off`，复用既有FanCommand/FanState，
+验证Actuator在线状态、Boot ID会话、Source、request_id、result及1000 ms deadline。
+LLM重发的相同响应因chat请求已经完成而不能再次产生FanCommand。MiMo只给出动作建议，
+GD32的白名单、在线状态和Tool仍是最终授权点。
+
+### 34.1 LlmChatRequest V1 Compact Context C1
+
+C1是现有`LlmChatRequest V1`的`text`字段内部应用约定，不是新的UMCA线级协议版本，
+Topic、Payload头和最大241字节均未修改。格式冻结为：
+
+```text
+C1;tv=1;t=<int32>;age=<uint32>;q=<uint8>;so=<0|1>;ao=<0|1>;f=<0|1|2>
+Q:<用户UTF-8文本>
+
+C1;tv=0;so=<0|1>;ao=<0|1>;f=<0|1|2>
+Q:<用户UTF-8文本>
+```
+
+字段顺序固定；`f=2`表示风扇未知。`tv=0`必须省略`t/age/q`。上下文仅由GD32生成，
+用户文本必须是合法UTF-8并拒绝NUL、CR、LF和控制字符。用户可用字节数按本次前缀
+实际长度计算；总长恰好241字节允许，242字节拒绝，不截断UTF-8。`age`对有效快照
+饱和到现有5000 ms新鲜度阈值。
+
+NSH仍使用`umca_gd32 chat <用户文本>`，因此终端交互兼容；线上发送内容统一为C1，
+不再发送无上下文纯文本。Windows Mock严格解析C1并能使用可信温度回答查询。实体ESP32
+Provider和MiMo云端API已完成最终验收；其system prompt必须继续解释C1、`tv=0`、`f=2`、
+简短回复和`none|set_fan`动作限制，不能假设模型天然理解缩写。
+
+### 34.2 主动评估与资源
+
+`agent-auto`默认关闭，与本地`auto`互斥。本地auto开启时拒绝开启agent-auto；有效温度
+阈值跨越通过容量1邮箱投递，待处理事件合并，60秒冷却。回调不等待LLM。自动响应同样
+经过deadline和`device_control`，迟到响应不能执行；网络失败不影响query、manual和
+本地auto降级路径。
+
+最终Linux交叉构建资源为Flash 262,572 B、SRAM 17,668 B，`size`为text 261,403 B、
+data 1,168 B、bss 16,500 B。相对2026-09-14基线增加Flash 6,492 B、SRAM 284 B。
+
+## 35. 最终混合实物闭环（2026-09-18）
+
+最终运行拓扑由实体GD32F470VKT6、实体ESP32-S3-N16R8、实体Actuator和Windows串口
+Sensor组成。Sensor的软件宿主虽然是Windows，但在线路上仍是独立UMCA节点，继续使用
+`0x0000000000001001` DevID、独立Boot ID/Sequence及既有温度和阈值Topic。
+
+最终固件烧录和功能验收已通过。实体ESP32完成固定串口路由及MiMo云端API调用，实体
+Actuator完成风扇动作确认；系统覆盖Discovery、温度查询、手动控制、本地自动控制、
+C1 Chat、云端响应关联、GD32动作授权和FanState反馈。早期Windows单COM三节点模拟器
+继续作为自动回归工具，不再代表最终物理节点组成。
 
 ---
 
